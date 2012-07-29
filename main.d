@@ -35,6 +35,9 @@ enum : SyntaxElement
 	AST_STATEMENT               = 0x0002_0000_0000_0000,
 }
 
+
+
+
 bool isA( SyntaxElement leafier, SyntaxElement rootier )
 {
 	SyntaxElement mask = 0;
@@ -1189,18 +1192,33 @@ void matchNodes(A...)( /*AstNode node,*/ A patternElements )
 }
 
 import pegged.development.grammarfunctions;
+import pegged.peg;
 import pegged.examples.dgrammar;
 import pegged.examples.c;
 
+dstring secondCtfe(T)( T val )
+{
+    return to!dstring(val);
+}
+
+dstring templatedCtfe(T)(dstring rhs, T val)
+{
+    return "sup! "d ~ rhs ~ " " ~ secondCtfe(val);
+}
+
 void main()
 {
+    /+const str = templatedCtfe("world!"d, 42);
+    writefln(str);
+    return;
++/
 	auto c = checkGrammar(Cgrammar, ReduceFurther.Yes);
 	writeln(c);
-	foreach(k,v;c)
-		if (v != Diagnostic.NoRisk) writeln(k,":",v);
+	//foreach(k,v;c)
+	//	if (v != Diagnostic.NoRisk) writeln(k,":",v);
 	
 	stdout.writefln("Parsing ccode/example.c");
-	auto tree = C.TranslationUnit.parse(to!string(std.file.read("ccode/example.c")));
+	auto tree = C!(ParseTree).TranslationUnit.parse(to!string(std.file.read("ccode/example.c")));
 	stdout.writefln("%s",tree.toString());
 	/+stdout.writefln("Parsing test.d");
 	auto tree = D.Module.parse(to!string(std.file.read("test.d")));
@@ -1359,9 +1377,61 @@ Into
 	exitLoop:
 +/
 /+
+
+structural conformity definition:
+"WhileStatement has
+{
+    Expression $expression
+    Statement  $statement
+}"
+
 void lowerWhileStatement( SyntaxElement* syntaxNode )
 {
-	auto captures = syntaxNode.matchNodes(
+    auto captures = syntaxNode.matchNodes(
+        "WhileStatement has
+        {
+            .expression $expr;
+            .statement  $statement has
+            any {
+                any .;
+                one_of 
+                {
+                    ContinueStatement $continues;
+                    BreakStatement    $breaks;
+                }
+            }
+        }")
+    
+    captures.add("uniqLoopAgain", getUniqueLabel(syntaxNode.enclosingScope))
+    captures.add("uniqExitLoop", getUniqueLabel(syntaxNode.enclosingScope))
+    
+    foreach( ref node; continues )
+        node.replaceWith( captures, "GotoStatement has $uniqLoopAgain" )
+    
+    foreach( ref node; breaks )
+        node.replaceWith( captures, "GotoStatement has $uniqExitLoop" )
+    
+    syntaxNode.replaceWith( captures, 
+        "Label has $uniqLoopAgain
+        IfStatement has
+        {
+            OpNegate has $expr
+            GotoStatement has $uniqExitLoop
+        }
+        $statement
+        GotoStatement has $uniqLoopAgain
+        Label has $uniqExitLoop
+        ")
+        
+            at_least(5)
+            at_most(5)
+            between(3,5)
+}
+
+void lowerWhileStatement( SyntaxElement* syntaxNode )
+{
+      
+    auto captures = syntaxNode.matchNodes(
 		TOK_WHILE_NODE,
 		OP_ENTER_NODE,
 			OP_CAPTURE(0),
@@ -1435,7 +1505,7 @@ void findConstEscapes( ParseTree* node )
 	}
 }
 +/
-
+/+
 void fun(T:int)(T a)
 {
 }
@@ -1445,3 +1515,4 @@ void fun(T)(T a, T b)
 }
 
 fun(1,2); // What happen?
++/
