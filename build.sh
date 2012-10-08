@@ -1,5 +1,5 @@
 #!/bin/bash
-set -x
+set -x -e
 PEGGED_PATH=pegged/pegged
 PEGGED_FILES="
  -Ipegged
