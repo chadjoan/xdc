@@ -1191,9 +1191,7 @@ void matchNodes(A...)( /*AstNode node,*/ A patternElements )
 	
 }
 
-import pegged.development.grammarfunctions;
 import pegged.peg;
-import pegged.examples.dgrammar;
 import pegged.examples.c;
 
 dstring secondCtfe(T)( T val )
