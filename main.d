@@ -8,7 +8,8 @@ import std.conv;
 
 //version = TRACE_CTFE;
 
-import generated.dparser;
+//import generated.dparser;
+import generated.pml;
 
 alias short PatternOpArgument;
 alias long SyntaxElement;
@@ -524,7 +525,7 @@ struct NfaFragment
 			m_deepCopy(oldState.out1, danglingArrowsIn, newState.out1, danglingArrowsOut);
 			m_deepCopy(oldState.out2, danglingArrowsIn, newState.out2, danglingArrowsOut);
 			
-			foreach ( ref NfaArrow* arrowPtr; danglingArrowsIn )
+			foreach ( const NfaArrow* arrowPtr; danglingArrowsIn )
 			{
 				if      ( arrowPtr is &oldState.out1 )
 					danglingArrowsOut ~= &newState.out1;
@@ -1210,14 +1211,32 @@ void main()
     writefln(str);
     return;
 +/
-	auto c = checkGrammar(Cgrammar, ReduceFurther.Yes);
-	writeln(c);
+	/+auto c = checkGrammar(Cgrammar, ReduceFurther.Yes);
+	writeln(c);+/
 	//foreach(k,v;c)
 	//	if (v != Diagnostic.NoRisk) writeln(k,":",v);
 	
-	stdout.writefln("Parsing ccode/example.c");
+	stdout.writefln("PML diagnostic.");
+	auto tree = PML("Foo $bar;");
+	/+auto tree = PML("WhileStatement has
+        {
+            .expression $expr;
+            .statement  $statement has
+            any {
+                any .;
+                one_of 
+                {
+                    ContinueStatement $continues;
+                    BreakStatement    $breaks;
+                }
+            }
+        }");+/
+	stdout.writefln("%s", tree.toString());
+	
+	/+stdout.writefln("Parsing ccode/example.c");
 	auto tree = C!(ParseTree).TranslationUnit.parse(to!string(std.file.read("ccode/example.c")));
 	stdout.writefln("%s",tree.toString());
+	+/
 	/+stdout.writefln("Parsing test.d");
 	auto tree = D.Module.parse(to!string(std.file.read("test.d")));
 	stdout.writefln("%s",tree.toString());

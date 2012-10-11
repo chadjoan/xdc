@@ -14,12 +14,13 @@ void main()
 	if ( std.file.exists("generated/dparser.d") )
 		std.file.remove("generated/dparser.d");
 	
+	/+
 	std.file.write("generated/dparser.d",
 		to!string(
 			"module generated.dparser;\n"~
 			"import pegged.grammar;\n"~
 			"\n"~grammar(Cgrammar)));
-	
+	+/
 	std.file.write("generated/pml.d",
         to!string(
             "module generated.pml;\n"~

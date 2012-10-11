@@ -1,19 +1,19 @@
 module grammars.pmlgrammar;
 
 enum string pmlGrammar = ` 
-PatternExpressions <
-    PatternExpression*
+PML:
 
-PatternExpression <
-      BinaryExpression
+PatternExpressions < PatternExpression*
+
+PatternExpression < BinaryExpression
 
 BlockExpression <
       "{" PatternExpression "}"
 
 BinaryExpression <
-      AndExpression
+      SeqExpression
 
-AndExpression <
+SeqExpression <
       HasExpression (PatternExpression)?
       UnaryExpression (";" (PatternExpression)?)?
 
