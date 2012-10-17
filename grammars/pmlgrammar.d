@@ -3,7 +3,7 @@ module grammars.pmlgrammar;
 enum string pmlGrammar = ` 
 PML:
 
-PatternExpressions < PatternExpression*
+PatternExpressions < PatternExpression+
 
 PatternExpression < BinaryExpression
 
@@ -13,12 +13,18 @@ BlockExpression <
 BinaryExpression <
       SeqExpression
 
-SeqExpression <
-      HasExpression (PatternExpression)?
-      UnaryExpression (";" (PatternExpression)?)?
+SeqExpression < SeqElement+
+
+SeqElement <
+	  ScopingExpression
+	/ UnaryExpression ";"
+
+ScopingExpression <
+	  HasExpression
+	/ UnaryOp BlockExpression
 
 HasExpression <
-    AtomicMatch (Capture)? "has" BlockExpression
+      AtomicMatch "has" UnaryExpression
 
 UnaryExpression <
       UnaryOp UnaryExpression
@@ -34,17 +40,16 @@ UnaryOp <
     / "between" "(" Integer "," Integer ")"
 
 AtomicMatch <
-      "."
-    / Type Capture
-    / Type
-    / RelativePath
-    / RelativePath Capture
+      Type Capture?
+    / RelativePath Capture?
+    / "." Capture?
 
 RelativePath <
     "." Path
 
 Path <
-    Identifier "." Path
+      Identifier "." Path
+    / Identifier
 
 Type <
     Identifier
@@ -54,5 +59,5 @@ Capture <
 
 Integer < [0-9]+
 
-Identifier < [a-zA-Z_] [a-zA-Z0-9_]*
+Identifier <- !UnaryOp [a-zA-Z_] [a-zA-Z0-9_]*
 `;

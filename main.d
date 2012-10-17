@@ -1217,7 +1217,7 @@ void main()
 	//	if (v != Diagnostic.NoRisk) writeln(k,":",v);
 	
 	stdout.writefln("PML diagnostic.");
-	auto tree = PML("Foo $bar;");
+	auto tree = PML.PatternExpressions("Foo $bar;");
 	/+auto tree = PML("WhileStatement has
         {
             .expression $expr;
@@ -1231,6 +1231,44 @@ void main()
                 }
             }
         }");+/
+	stdout.writefln("%s", tree.toString());
+	
+	stdout.writefln("");
+	stdout.writefln("Now let's be harsh with PML.");
+	/+tree = PML.UnaryExpression(
+		"
+                one_of 
+                {
+                    ContinueStatement $continues;
+                    BreakStatement    $breaks;
+                }
+        ");
+	tree = PML.HasExpression(
+		"
+            .statement  $statement has
+            any {
+                any .;
+                one_of 
+                {
+                    ContinueStatement $continues;
+                    BreakStatement    $breaks;
+                }
+            }
+        ");+/
+	tree = PML.HasExpression(
+		"WhileStatement has
+        {
+            .expression $expr;
+            .statement  $statement has
+            any {
+                any .;
+                one_of 
+                {
+                    ContinueStatement $continues;
+                    BreakStatement    $breaks;
+                }
+            }
+        }");
 	stdout.writefln("%s", tree.toString());
 	
 	/+stdout.writefln("Parsing ccode/example.c");
