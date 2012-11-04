@@ -1,22 +1,21 @@
 module grammars.pmlgrammar;
 
+enum string pmlGrammar = "PML: Foo <- blank";
+/+
 enum string pmlGrammar = ` 
 PML:
 
-PatternExpressions < PatternExpression+
+PatternExpressions < PatternExpression+ !.
 
 PatternExpression < BinaryExpression
 
-BlockExpression <
-      "{" PatternExpression "}"
+BlockExpression < "{" PatternExpression "}"
 
-BinaryExpression <
-      SeqExpression
+BinaryExpression < SeqExpression
 
 SeqExpression < SeqElement+
 
-SeqElement <
-	  ScopingExpression
+SeqElement < ScopingExpression
 	/ UnaryExpression ";"
 
 ScopingExpression <
@@ -61,3 +60,4 @@ Integer < [0-9]+
 
 Identifier <- !UnaryOp [a-zA-Z_] [a-zA-Z0-9_]*
 `;
++/

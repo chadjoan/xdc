@@ -1,12 +1,17 @@
+enum string testGrammar = ` 
+TestGrammar:
 
-import pegged.dgrammar;
+Root < A B* !.
+A <- 'a'
+B <- 'b'
+`;
+
 import pegged.grammar;
-import pegged.peg;
+import std.stdio;
+
+mixin(grammar(testGrammar));
 
 void main()
 {
-	return;
+	stdout.writefln("%s", TestGrammar.Root("ab b bb b"));
 }
-
-mixin(grammar(Dgrammar));
-
