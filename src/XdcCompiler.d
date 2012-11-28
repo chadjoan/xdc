@@ -6,6 +6,7 @@ import std.file : write, read;
 import generated.dparser;
 
 import targets;
+import IPipeLine;
 
 alias ParseTree* AstNode;
 
@@ -51,7 +52,7 @@ class XdcCompiler
 			addTreeAsModule(projectRoot, moduleRoot);
 		}
 		
-		auto p = targetToPipeline(target);
+		auto p = toPipeline(target);
 		auto outputNode = p.execute(projectRoot);
 
 		enforce(D.getId!(outputNode.name) == D.getId!"XdcFinalOutput");

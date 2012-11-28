@@ -1,30 +1,36 @@
 module targets;
 
-import SemanticRule;
-import PipelineGenerator;
-import IPipeline;
+import IPipeline : getPipelineName;
 
-string makeCPipeline()
+private TargetTable defineTargets()
 {
-	auto pl = PipelineGenerator("C");
-	pl.addRule(finalCRule);
-	return p1.toD();
+	TargetTable t;
+	
+	//      (  enum        , toString      , default   )
+	//      (    name      ,   contents    , extension )
+	t.define("invalid"     , "00000000"    , "000"     );
+	t.define("c"           , "C"           , "c"       );
+	t.define("interpret"   , "interpret"   , "err"     );
+	
+	return t;
 }
 
-mixin(makeCPipeline());
+private const targetTable = defineTargets();
+mixin(targetTable.emitTargetEnum());
+mixin(targetTable.emitTargetToStringFunc());
+mixin(targetTable.emitStringToTargetFunc());
+mixin(targetTable.emitTargetToExtFunc());
+mixin(targetTable.emitTargetToPipelineFunc());
 
-/+
-
-Pipeline_C : IPipeline
+unittest
 {
-
-	override AstNode execute( AstNode projectRoot )
-	{
-		/* DFA for compilation goes here. */
-	}
+	assert( toString(CompTarget.c) == "C" );
+	assert( toTarget("C") == CompTarget.c );
+	assert( toExt(CompTarget.c) == "c" );
+	// TODO: test the toPipeline() function
 }
 
-+/
+
 
 
 private struct TargetTable
@@ -119,30 +125,24 @@ private struct TargetTable
 		
 		return result;
 	}
-}
-
-private TargetTable defineTargets()
-{
-	TargetTable t;
-	//      (  enum        , toString      , default   )
-	//      (    name      ,   contents    , extension )
-	t.define("invalid"     , "00000000"    , "000"     );
-	t.define("c"           , "C"           , "c"       );
-	t.define("interpret"   , "interpret"   , "err"     );
-	return t;
-}
-
-private const targetTable = defineTargets();
-mixin(targetTable.emitTargetEnum());
-mixin(targetTable.emitTargetToStringFunc());
-mixin(targetTable.emitStringToTargetFunc());
-mixin(targetTable.emitTargetToExtFunc());
-
-unittest
-{
-	assert( toString(CompTarget.c) == "C" );
-	assert( toTarget("C") == CompTarget.c );
-	assert( toExt(CompTarget.c) == "c" );
+	
+	string emitTargetToPipelineFunc()
+	{
+		string result = "";
+		
+		result ~= "string toPipeline( CompTarget t )\n{\n";
+		result ~= "\tfinal switch( t )\n\t{\n";
+		
+		for ( int i = 0; i < enumNames.length; i++ )
+			result ~= "\t\tcase CompTarget." ~ enumNames[i] ~ 
+				": return new " ~ getPipelineName(enumNames[i]) ~ "();\n";
+		
+		result ~= "\t}\n";
+		result ~= "\tassert(0);\n";
+		result ~= "}\n";
+		
+		return result;
+	}
 }
 
 /+

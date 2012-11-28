@@ -1,11 +1,17 @@
 module PipelineGenerator;
 
+import targets;
 import SemanticRule;
 
 struct PipelineGenerator
 {
 	PmlNfa totalNfa;
 	PmlDfa totalDfa;
+	
+	this( CompTarget t )
+	{
+		TODO
+	}
 
 	void addRule( SemanticRule rule )
 	{
