@@ -2,6 +2,7 @@ import std.file;
 import std.stdio;
 import std.conv;
 
+import pegged.examples.dgrammar;
 import pegged.examples.c;
 import pegged.grammar;
 
@@ -14,13 +15,12 @@ void main()
 	if ( std.file.exists("generated/dparser.d") )
 		std.file.remove("generated/dparser.d");
 	
-	/+
 	std.file.write("generated/dparser.d",
 		to!string(
 			"module generated.dparser;\n"~
 			"import pegged.grammar;\n"~
-			"\n"~grammar(Cgrammar)));
-	+/
+			"\n"~grammar(Dgrammar ~ DgrammarExtensions)));
+	
 	std.file.write("generated/pml.d",
         to!string(
             "module generated.pml;\n"~
@@ -28,3 +28,8 @@ void main()
             "\n"~grammar(pmlGrammar)));
 	
 }
+
+const DgrammarExtensions = `
+
+XdcFinalOutput <- !.
+`;
