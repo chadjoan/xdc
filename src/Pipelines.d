@@ -5,6 +5,8 @@ import SemanticRule;
 import PipelineGenerator;
 import IPipeline;
 
+import rules.cbackend;
+
 string makeCPipeline()
 {
 	auto pl = PipelineGenerator(CompTarget.c);

@@ -1,5 +1,6 @@
 module XdcCompiler;
 
+debug { import std.stdio; }
 import std.stdio;
 import std.file : write, read;
 
@@ -8,7 +9,7 @@ import generated.dparser;
 import targets;
 import IPipeLine;
 
-alias ParseTree* AstNode;
+alias ParseTree AstNode;
 
 class XdcCompiler
 {
@@ -16,7 +17,7 @@ class XdcCompiler
 	CompTarget target = CompTarget.c;
 	
 	private string[] sourceFiles = new string[0];
-	private AstNode projectRoot = new AstNode();
+	private AstNode* projectRoot = new AstNode();
 	
 	this()
 	{
@@ -55,14 +56,15 @@ class XdcCompiler
 		auto p = toPipeline(target);
 		auto outputNode = p.execute(projectRoot);
 
-		enforce(D.getId!(outputNode.name) == D.getId!"XdcFinalOutput");
+		debug writefln("%s, %s: TODO", __FILE__, __LINE__);
+		//enforce(D.getId!(outputNode.name) == D.getId!"XdcFinalOutput");
 		
 		std.file.write(outputNode.toCode(), outputFile);
 	}
 	
 }
 
-private void addTreeAsModule( AstNode projectRoot, AstNode moduleRoot )
+private void addTreeAsModule( AstNode* projectRoot, AstNode* moduleRoot )
 {
-	TODO
+	debug writefln("%s, %s: stub", __FILE__, __LINE__);
 }
