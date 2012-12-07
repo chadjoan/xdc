@@ -1,3 +1,3 @@
 *.o
 bin/*
-generated/*
+src/generated/*
