@@ -58,7 +58,7 @@ private struct TargetTable
 		defaultExts ~= defaultExt;
 	}
 	
-	string emitTargetEnum()
+	string emitTargetEnum() const
 	{
 		string result = "";
 		
@@ -71,7 +71,7 @@ private struct TargetTable
 	}
 	
 	
-	string emitTargetToStringFunc()
+	string emitTargetToStringFunc() const
 	{
 		string result = "";
 		
@@ -89,7 +89,7 @@ private struct TargetTable
 		return result;
 	}
 	
-	string emitStringToTargetFunc()
+	string emitStringToTargetFunc() const
 	{
 		string result = "";
 		
@@ -108,7 +108,7 @@ private struct TargetTable
 		return result;
 	}
 	
-	string emitTargetToExtFunc()
+	string emitTargetToExtFunc() const
 	{
 		string result = "";
 		
@@ -126,7 +126,7 @@ private struct TargetTable
 		return result;
 	}
 	
-	string emitTargetToPipelineFunc()
+	string emitTargetToPipelineFunc() const
 	{
 		string result = "";
 		

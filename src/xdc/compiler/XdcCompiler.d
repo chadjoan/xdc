@@ -7,9 +7,7 @@ import std.file : write, read;
 import generated.dparser;
 
 import targets;
-import IPipeLine;
-
-alias ParseTree AstNode;
+import IPipeline;
 
 class XdcCompiler
 {

@@ -1,8 +1,9 @@
 module SemanticRule;
 
 debug { import std.stdio; }
+import misc;
 
-final class SemanticRule
+struct SemanticRule
 {
 	/+
 	PmlDfa nfa;
@@ -18,13 +19,13 @@ final class SemanticRule
 		auto pmlTree = pmlParser.Root(pmlCode);
 		nfa = toPmlNfa(pmlTree);
 		+/
-		debug writefln("%s, %s: stub", __FILE__, __LINE__);
+		stubAlert();
 	}
 	
 	void substitutes( string pmlCode )
 	{
 		
-		debug writefln("%s, %s: stub", __FILE__, __LINE__);
+		stubAlert();
 	}
 	
 	void consumes( string[] features )
@@ -32,7 +33,7 @@ final class SemanticRule
 		featuresConsumed = featuresConsumed.init;
 		foreach( feature; features )
 			featuresConsumed[feature] = true;
-		featuresConsumed = featuresConsumed.rehash;
+		//featuresConsumed = featuresConsumed.rehash;
 	}
 	
 	void produces( string[] features )
@@ -40,17 +41,17 @@ final class SemanticRule
 		featuresProduced = featuresProduced.init;
 		foreach( feature; features )
 			featuresProduced[feature] = true;
-		featuresProduced = featuresProduced.rehash;
+		//featuresProduced = featuresProduced.rehash;
 	}
 	
 	bool consumesFeature( string feature )
 	{
-		debug writefln("%s, %s: stub", __FILE__, __LINE__);
+		stubAlert();
 	}
 	
 	bool producesFeature( string feature )
 	{
-		debug writefln("%s, %s: stub", __FILE__, __LINE__);
+		stubAlert();
 	}
 }
 

@@ -19,3 +19,8 @@ string boolToStr(bool val)
 	if ( val ) return "true";
 	else       return "false";
 }
+
+void stubAlert(string file = __FILE__, int line = __LINE__)
+{
+	debug __ctfeWriteln(file~", "~itoa(line)~": stub");
+}

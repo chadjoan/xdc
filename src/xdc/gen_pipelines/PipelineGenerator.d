@@ -2,11 +2,12 @@ module PipelineGenerator;
 
 debug { import std.stdio; }
 
+import misc;
 import targets;
-import IPipeLine;
+import IPipeline;
 import SemanticRule;
 
-struct PipelineGenerator
+final class PipelineGenerator
 {
 	/+
 	PmlNfa totalNfa;
@@ -16,12 +17,12 @@ struct PipelineGenerator
 	
 	this( CompTarget t )
 	{
-		pipelineName = getPipelineName(toString(t));
+		pipelineName = getPipelineName(t.toString());
 	}
 
-	void addRule( SemanticRule rule )
+	void addRule( const ref SemanticRule rule )
 	{
-		debug writefln("%s, %s: stub", __FILE__, __LINE__);
+		stubAlert();
 		
 		/+
 		if ( !totalDfa.initialized )
@@ -47,13 +48,13 @@ struct PipelineGenerator
 		
 		totalDfa = Nfa.toDfa(totalNfa);
 		+/
-		debug writefln("%s, %s: stub", __FILE__, __LINE__);
+		stubAlert();
 	}
 
 	string toD()
 	{
 		ensureDfaComputed();
-		debug writefln("%s, %s: stub", __FILE__, __LINE__);
+		stubAlert();
 		
 		return ` 
 			class `~pipelineName~` : IPipeline

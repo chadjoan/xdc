@@ -9,11 +9,19 @@ import rules.cbackend;
 
 string makeCPipeline()
 {
-	auto pl = PipelineGenerator(CompTarget.c);
-	pl.addRule(finalCRule);
-	return p1.toD();
+	auto pg = new PipelineGenerator(CompTarget.c);
+	pg.addRule(finalCRule);
+	return pg.toD();
 }
 
+/+
+template splort()
+{
+	const string splort = makeCPipeline();
+}
+
+const str = splort!();
++/
 mixin(makeCPipeline());
 
 /+

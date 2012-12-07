@@ -1,7 +1,10 @@
+module rules.cbackend;
 
-const finalCRule =
+import SemanticRule;
+
+const finalCRule = 
 {
-	auto rule = new SemanticRule();
+	SemanticRule rule;
 	
 	rule.recognizes(`. $save`);
 	rule.substitutes(`&save`);
@@ -10,4 +13,4 @@ const finalCRule =
 	rule.produces([""]);
 	
 	return rule;
-};
+}();
