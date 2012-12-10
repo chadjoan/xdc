@@ -1,6 +1,4 @@
-module targets;
-
-import IPipeline : getPipelineName;
+module xdc.common.targets;
 
 private TargetTable defineTargets()
 {
@@ -8,19 +6,19 @@ private TargetTable defineTargets()
 	
 	//      (  enum        , toString      , default   )
 	//      (    name      ,   contents    , extension )
-	t.define("invalid"     , "00000000"    , "000"     );
+	t.define("invalid"     , "Invalid"     , "000"     );
 	t.define("c"           , "C"           , "c"       );
 	t.define("interpret"   , "interpret"   , "err"     );
 	
 	return t;
 }
 
-private const targetTable = defineTargets();
+const targetTable = defineTargets();
 mixin(targetTable.emitTargetEnum());
 mixin(targetTable.emitTargetToStringFunc());
 mixin(targetTable.emitStringToTargetFunc());
 mixin(targetTable.emitTargetToExtFunc());
-mixin(targetTable.emitTargetToPipelineFunc());
+//mixin(targetTable.emitTargetToPipelineFunc()); /* Delay this until pipelines are generated. */
 
 unittest
 {
@@ -30,6 +28,17 @@ unittest
 	// TODO: test the toPipeline() function
 }
 
+
+
+string getPipelineName( CompTarget target )
+{
+	return getPipelineNameFromTargetStr(target.toString());
+}
+
+private string getPipelineNameFromTargetStr( string target )
+{
+	return "Pipeline_"~target;
+}
 
 
 
@@ -130,12 +139,12 @@ private struct TargetTable
 	{
 		string result = "";
 		
-		result ~= "string toPipeline( CompTarget t )\n{\n";
+		result ~= "IPipeline toPipeline( CompTarget t )\n{\n";
 		result ~= "\tfinal switch( t )\n\t{\n";
 		
 		for ( int i = 0; i < enumNames.length; i++ )
 			result ~= "\t\tcase CompTarget." ~ enumNames[i] ~ 
-				": return new " ~ getPipelineName(enumNames[i]) ~ "();\n";
+				": return new " ~ getPipelineNameFromTargetStr(toStringContents[i]) ~ "();\n";
 		
 		result ~= "\t}\n";
 		result ~= "\tassert(0);\n";

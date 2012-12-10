@@ -5,8 +5,8 @@ import std.getopt;
 import std.string;
 import std.path : extension;
 
-import targets;
-import XdcCompiler;
+import xdc.common.targets;
+import xdc.compiler.XdcCompiler;
 
 private void printUsage()
 {

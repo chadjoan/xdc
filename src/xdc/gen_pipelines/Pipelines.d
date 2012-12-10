@@ -1,16 +1,30 @@
-module Pipelines;
+module xdc.gen_pipelines.Pipelines;
 
-import targets;
-import SemanticRule;
-import PipelineGenerator;
-import IPipeline;
+import xdc.common.targets;
+import xdc.common.SemanticRule;
+import xdc.common.IPipeline;
+import xdc.gen_pipelines.PipelineGenerator;
 
-import rules.cbackend;
+import xdc.rules.cbackend;
+
+string makeInvalidPipeline()
+{
+	auto pg = new PipelineGenerator(CompTarget.invalid);
+	pg.addRule(finalCRule());
+	return pg.toD();
+}
 
 string makeCPipeline()
 {
 	auto pg = new PipelineGenerator(CompTarget.c);
-	pg.addRule(finalCRule);
+	//pg.addRule(finalCRule());
+	return pg.toD();
+}
+
+string makeInterpretPipeline()
+{
+	auto pg = new PipelineGenerator(CompTarget.interpret);
+	//pg.addRule(finalCRule());
 	return pg.toD();
 }
 
@@ -22,7 +36,7 @@ template splort()
 
 const str = splort!();
 +/
-mixin(makeCPipeline());
+/+mixin(makeCPipeline());+/
 
 /+
 

@@ -1,9 +1,9 @@
-module SemanticRule;
+module xdc.common.SemanticRule;
 
 debug { import std.stdio; }
-import misc;
+import xdc.common.misc;
 
-struct SemanticRule
+final class SemanticRule
 {
 	/+
 	PmlDfa nfa;
@@ -47,11 +47,13 @@ struct SemanticRule
 	bool consumesFeature( string feature )
 	{
 		stubAlert();
+		return true;
 	}
 	
 	bool producesFeature( string feature )
 	{
 		stubAlert();
+		return false;
 	}
 }
 

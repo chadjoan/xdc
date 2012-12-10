@@ -1,4 +1,4 @@
-module AstNode;
+module xdc.common.AstNode;
 
 public import pegged.peg;
 

@@ -1,11 +1,10 @@
-module PipelineGenerator;
+module xdc.gen_pipelines.PipelineGenerator;
 
 debug { import std.stdio; }
 
-import misc;
-import targets;
-import IPipeline;
-import SemanticRule;
+import xdc.common.misc;
+import xdc.common.targets;
+import xdc.common.SemanticRule;
 
 final class PipelineGenerator
 {
@@ -17,10 +16,10 @@ final class PipelineGenerator
 	
 	this( CompTarget t )
 	{
-		pipelineName = getPipelineName(t.toString());
+		pipelineName = getPipelineName(t);
 	}
 
-	void addRule( const ref SemanticRule rule )
+	void addRule( const SemanticRule rule )
 	{
 		stubAlert();
 		
@@ -59,7 +58,7 @@ final class PipelineGenerator
 		return ` 
 			class `~pipelineName~` : IPipeline
 			{
-				override AstNode execute( AstNode projectRoot )
+				override AstNode* execute( AstNode* projectRoot )
 				{
 					/* DFA for compilation goes here. */
 					return projectRoot;

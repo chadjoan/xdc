@@ -1,25 +1,36 @@
-module XdcCompiler;
+module xdc.compiler.XdcCompiler;
 
 debug { import std.stdio; }
 import std.stdio;
+import std.conv;
 import std.file : write, read;
 
-import generated.dparser;
+import xdc.generated.parsers;
+import xdc.generated.pipelines;
 
-import targets;
-import IPipeline;
+import xdc.common.AstNode;
+import xdc.common.targets;
+import xdc.common.IPipeline;
+
+/* TODO: stub */
+string toCode( AstNode* node )
+{
+	writefln("%s, %s: stub", __FILE__, __LINE__);
+	return node.input[node.begin .. node.end];
+}
 
 class XdcCompiler
 {
 	string outputFile = null;
 	CompTarget target = CompTarget.c;
 	
-	private string[] sourceFiles = new string[0];
-	private AstNode* projectRoot = new AstNode();
+	private string[] sourceFiles;
+	private AstNode* projectRoot;
 	
 	this()
 	{
 		sourceFiles = new string[0];
+		projectRoot = new AstNode();
 	}
 
 	void addSourceFile( string filePath )
@@ -47,8 +58,8 @@ class XdcCompiler
 		foreach( source; sourceFiles )
 		{
 			// TODO: error handling.
-			auto moduleRoot = D.Module(std.file.read(source));
-			addTreeAsModule(projectRoot, moduleRoot);
+			auto moduleRoot = D.Module(to!string(std.file.read(source)));
+			addTreeAsModule(projectRoot, &moduleRoot);
 		}
 		
 		auto p = toPipeline(target);

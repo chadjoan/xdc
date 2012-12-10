@@ -1,4 +1,4 @@
-module misc;
+module xdc.common.misc;
 
 /* A compile-time evaluatable number->string conversion. */
 string itoa(long num)

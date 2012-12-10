@@ -1,10 +1,10 @@
-module rules.cbackend;
+module xdc.rules.cbackend;
 
-import SemanticRule;
+import xdc.common.SemanticRule;
 
 const finalCRule = 
 {
-	SemanticRule rule;
+	SemanticRule rule = new SemanticRule();
 	
 	rule.recognizes(`. $save`);
 	rule.substitutes(`&save`);
@@ -13,4 +13,4 @@ const finalCRule =
 	rule.produces([""]);
 	
 	return rule;
-}();
+};

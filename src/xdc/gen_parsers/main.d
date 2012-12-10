@@ -6,27 +6,24 @@ import pegged.examples.dgrammar;
 import pegged.examples.c;
 import pegged.grammar;
 
-import grammars.pmlgrammar;
+import xdc.grammars.pmlgrammar;
 
 void main()
 {
-	if ( !std.file.exists("generated") )
-		std.file.mkdir("generated");
-	if ( std.file.exists("generated/dparser.d") )
-		std.file.remove("generated/dparser.d");
-	
-	std.file.write("generated/dparser.d",
+	std.file.write("src/xdc/generated/parsers.d",
 		to!string(
-			"module generated.dparser;\n"~
+			"module xdc.generated.parsers;\n"~
 			"import pegged.grammar;\n"~
-			"\n"~grammar(Dgrammar ~ DgrammarExtensions)));
-	
-	std.file.write("generated/pml.d",
-        to!string(
-            "module generated.pml;\n"~
-            "import pegged.grammar;\n"~
+			"\n"~grammar(Dgrammar ~ DgrammarExtensions)~
             "\n"~grammar(pmlGrammar)));
 	
+	/+
+	std.file.write("src/xdc/generated/pml.d",
+        to!string(
+            "module xdc.generated.pml;\n"~
+            "import pegged.grammar;\n"~
+            "\n"~grammar(pmlGrammar)));
+	+/
 }
 
 const DgrammarExtensions = `

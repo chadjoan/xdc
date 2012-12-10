@@ -1,14 +1,8 @@
-module IPipeline;
+module xdc.common.IPipeline;
 
-import AstNode;
+import xdc.common.AstNode;
 
 interface IPipeline
 {
-	AstNode execute( AstNode projectRoot );
-}
-
-
-string getPipelineName( string targetName )
-{
-	return "Pipeline_"~targetName;
+	AstNode* execute( AstNode* projectRoot );
 }
