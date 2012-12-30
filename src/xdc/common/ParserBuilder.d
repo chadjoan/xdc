@@ -354,14 +354,16 @@ private OpTypeTable defineOpTypes()
 {
 	OpTypeTable t;
 	
-	t.define("opLit"       );
-	t.define("opSeq"       );
-	t.define("opOr"        );
-	t.define("opAnd"       );
-	t.define("opMaybe"     );
-	t.define("opNot"       );
-	t.define("opGreedyStar");
-	t.define("opLazyStar"  );
+	t.define("literal"        );
+	t.define("sequence"       );
+	t.define("orderedChoice"  );
+	t.define("unorderedChoice");
+	t.define("intersection"   );
+	t.define("maybe"          );
+	t.define("complement"     );
+	t.define("lazyStar"       );
+	t.define("greedyStar"     );
+	t.define("pegStar"        );
 	
 	return t;
 }
@@ -379,63 +381,63 @@ struct GrammarNode(ElemType)
 	
 	union
 	{
-		private ChildList  m_children; /* When type != opLit */
-		private ElemType[] m_values;   /* When type == opLit */
+		private ChildList  m_children; /* When type != OpType.literal */
+		private ElemType[] m_values;   /* When type == OpType.literal */
 	}
 	
 	pure ref @property auto children()
 	{
-		assert( type != OpType.opLit );
+		assert( type != OpType.literal );
 		return m_children;
 	}
 	
 	ref @property auto children( ChildList newb )
 	{
-		assert( type != OpType.opLit );
+		assert( type != OpType.literal );
 		return m_children = newb;
 	}
 	
 	pure ref @property auto values()
 	{
-		assert( type == OpType.opLit );
+		assert( type == OpType.literal );
 		return m_values;
 	}
 	
 	ref @property auto values( ElemType[] newb )
 	{
-		assert( type == OpType.opLit );
+		assert( type == OpType.literal );
 		return m_values;
 	}
 	
 	void insertBack( Node* child )
 	{
-		assert( type != OpType.opLit );
+		assert( type != OpType.literal );
 		m_children ~= child;
 	}
 	
 	void insertBack( ElemType value )
 	{
-		assert( type == OpType.opLit );
+		assert( type == OpType.literal );
 		m_values ~= value;
 	}
 	
 	/* Used for non-literal construction. */
 	this(OpType type)
 	{
-		assert(type != OpType.opLit);
+		assert(type != OpType.literal);
 		this.type = type;
 		this.children = new Node*[0]; //make!(SList, Node)();
 	}
 	
 	this(size_t nElements)
 	{
-		this.type = OpType.opLit;
+		this.type = OpType.literal;
 		this.m_values = new ElemType[nElements];
 	}
 	
 	this(ElemType elem )
 	{
-		this.type = OpType.opLit;
+		this.type = OpType.literal;
 		this.m_values = new ElemType[1];
 		this.m_values[0] = elem;
 	}
@@ -443,7 +445,7 @@ struct GrammarNode(ElemType)
 	string toString( uint depth ) const
 	{
 		string result = std.array.replicate(" ", min(depth*2,256)) ~ opTypeToString(type);
-		if ( type == OpType.opLit )
+		if ( type == OpType.literal )
 			result ~= " " ~ to!string(m_values);
 		else
 			foreach( child; m_children )
@@ -466,20 +468,6 @@ final class ParserBuilder(ElemType)
 	private alias AutomatonState!ElemType    State;
 	+/
 	private alias GrammarNode!ElemType       Node;
-
-	/+
-	private alias size_t OpType;
-	private enum : OpType
-	{
-		opLit,
-		opSeq,
-		opOr,
-		opAnd,
-		opMaybe,
-		opNot,
-		opGreedyStar, // Matches zero or more of its operand.
-		opLazyStar,   // Matches zero or more of its operand.
-	}+/
 	
 	//private SList!OpType operatorStack;
 	//private SList!SList!Node operandStack;
@@ -497,13 +485,13 @@ final class ParserBuilder(ElemType)
 		//operatorStack = make!(SList, OpType)();
 		//operandStack  = make!(SList, SList!Node)();
 		parents = make!(SList!(Node*))(cast(Node*[])[]);
-		root = new Node(OpType.opSeq);
+		root = new Node(OpType.sequence);
 		parent = root;
 	}
 	
 	private void pushOp(OpType op)
 	{
-		assert(op != OpType.opLit);
+		assert(op != OpType.literal);
 		parents.insertFront(parent);
 		parent = new Node(op);
 		//operatorStack.insertFront(op);
@@ -511,10 +499,13 @@ final class ParserBuilder(ElemType)
 	}
 	
 	/** Sequencing: Equivalent to the regex operation (ab). */
-	void pushOpSeq()   { pushOp(OpType.opSeq); }
+	void pushOpSequence()         { pushOp(OpType.sequence); }
 	
-	/** Alternation: Equivalent to the regex operation (a|b) or the PEG operation (a/b). */
-	void pushOpOr()    { pushOp(OpType.opOr); }
+	/** Alternation: Equivalent to the PEG operation (a/b). */
+	void pushOpOrderedChoice()    { pushOp(OpType.orderedChoice); }
+	
+	/** Alternation: Equivalent to the regex operation (a|b). */
+	void pushOpUnorderedChoice()  { pushOp(OpType.unorderedChoice); }
 	
 	/** 
 Intersection: An operation that only succeeds if all of its operands succeed.
@@ -523,7 +514,7 @@ Currently unimplemented.
 
 Examples:
 --------------------
-// Example of two broad parsers being narrowed by OpAnd:
+// Example of two broad parsers being narrowed by OpIntersection:
 auto pb1 = new ParserBuilder!char;
 pb1.pushOpAnd();
 	pb1.pushOpOr();
@@ -551,7 +542,7 @@ assert(!p2.parse("a"));
 assert(!p2.parse("b"));
 -------------------- 
 	*/
-	void pushOpAnd()   { pushOp(OpType.opAnd); }
+	void pushOpIntersection()   { pushOp(OpType.intersection); }
 	
 	/**
 	Equivalent to the regex operation (a?). 
@@ -559,7 +550,7 @@ assert(!p2.parse("b"));
 	Since this is a unary operation, if more than one operand is given, then the
 	operands are placed in a sequence that will then be operated on.
 	*/
-	void pushOpMaybe() { pushOp(OpType.opMaybe); }
+	void pushOpMaybe() { pushOp(OpType.maybe); }
 	
 	/**
 	Negates its operand.
@@ -567,7 +558,7 @@ assert(!p2.parse("b"));
 	Since this is a unary operation, if more than one operand is given, then the
 	operands are placed in a sequence that will then be operated on.
 	*/
-	void pushOpNot()   { pushOp(OpType.opNot); }
+	void pushOpComplement()   { pushOp(OpType.complement); }
 	
 	/+
 	/**
@@ -605,7 +596,7 @@ assert(!p2.parse("b"));
 		
 		if ( operatorStack.length == 0 )
 		{
-			root = Node(opSeq,1);
+			root = Node(sequence,1);
 			root.children[0] = node;
 		}
 		else
@@ -623,14 +614,14 @@ assert(!p2.parse("b"));
 	
 	private static Node* flattenLiterals( Node* n )
 	{
-		if ( n.type != OpType.opSeq )
+		if ( n.type != OpType.sequence )
 			return n;
 		
 		bool doFlatten = true;
 		size_t elemCount = 0;
 		foreach( child; n.children )
 		{
-			if ( child.type != OpType.opLit )
+			if ( child.type != OpType.literal )
 			{
 				doFlatten = false;
 				break;
@@ -656,12 +647,12 @@ assert(!p2.parse("b"));
 	
 	unittest
 	{
-		auto n = new GrammarNode!char(OpType.opSeq);
+		auto n = new GrammarNode!char(OpType.sequence);
 		n.insertBack(new GrammarNode!char('a'));
 		n.insertBack(new GrammarNode!char('b'));
 		n.insertBack(new GrammarNode!char('c'));
 		n = flattenLiterals(n);
-		assert( n.type == OpType.opLit );
+		assert( n.type == OpType.literal );
 		assert( n.values[0] == 'a' );
 		assert( n.values[1] == 'b' );
 		assert( n.values[2] == 'c' );
@@ -890,7 +881,7 @@ builder.pop();
 void main()
 {
 	auto builder = new ParserBuilder!char;
-	builder.pushOpSeq();
+	builder.pushOpSequence();
 		builder.literal('x');
 		builder.pushOpMaybe();
 			builder.literal('y');
