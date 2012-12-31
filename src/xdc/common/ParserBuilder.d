@@ -458,6 +458,21 @@ struct GrammarNode(ElemType)
 	{
 		return toString(0);
 	}
+	
+	pure Node* deepCopy() const
+	{
+		Node* result = (new Node[1]).ptr; // Hack.  There has to be a better way to allocate one of these with 0-args?
+		result.type = this.type;
+		if ( type == OpType.literal )
+			result.m_values = this.m_values.dup;
+		else
+		{
+			result.m_children = new Node*[this.m_children.length];
+			foreach( i, child; this.m_children )
+				result.m_children[i] = this.m_children[i].deepCopy();
+		}
+		return result;
+	}
 }
 
 final class ParserBuilder(ElemType)
@@ -610,6 +625,53 @@ assert(!p2.parse("b"));
 	void literal( ElemType elem )
 	{
 		parent.insertBack(new Node(elem));
+	}
+	
+	void parser( const ParserBuilder pb )
+	{
+		if ( pb is this )
+			throw new Exception("Adding a parser to itself is not supported."
+				~"  This probably wouldn't do what's expected anyways.");
+		parent.insertBack(pb.root.deepCopy());
+	}
+	
+	unittest
+	{
+		auto pba = new ParserBuilder!char();
+		pba.pushOpSequence();
+			pba.pushOpUnorderedChoice();
+				pba.literal('x');
+				pba.literal('y');
+			pba.pop();
+		pba.pop();
+		
+		Node* a1 = pba.root; // Implicit sequence
+		Node* a2 = a1.children[0]; // pushOpSequence
+		Node* a3 = a2.children[0]; // pushOpUnorderedChoice
+		Node* a4 = a3.children[0]; // x
+		Node* a5 = a3.children[1]; // y
+		
+		auto pbb = new ParserBuilder!char();
+		pbb.parser(pba);
+		
+		// pbb.root is it's own implicit opSequence.
+		Node* b1 = pbb.root.children[0]; // pba's former implicit opSequence (copy of).
+		Node* b2 = b1.children[0]; // copy of pba.pushOpSequence
+		Node* b3 = b2.children[0]; // copy of pba.pushOpUnorderedChoice
+		Node* b4 = b3.children[0]; // copy of pba.literal('x')
+		Node* b5 = b3.children[1]; // copy of pba.literal('y')
+		
+		assert( b1.type == OpType.sequence );
+		assert( b2.type == OpType.sequence );
+		assert( b3.type == OpType.unorderedChoice );
+		assert( b4.type == OpType.literal );
+		assert( b5.type == OpType.literal );
+		
+		assert( a1 != b1 );
+		assert( a2 != b2 );
+		assert( a3 != b3 );
+		assert( a4 != b4 );
+		assert( a5 != b5 );
 	}
 	
 	private static Node* flattenLiterals( Node* n )
