@@ -358,12 +358,18 @@ private OpTypeTable defineOpTypes()
 	t.define("sequence"       );
 	t.define("orderedChoice"  );
 	t.define("unorderedChoice");
+	t.define("shortestChoice" );
+	t.define("longestChoice"  );
 	t.define("intersection"   );
 	t.define("maybe"          );
 	t.define("complement"     );
-	t.define("lazyStar"       );
-	t.define("greedyStar"     );
-	t.define("pegStar"        );
+	t.define("lazyRepeat"     );
+	t.define("greedyRepeat"   );
+	t.define("fullRepeat"     );
+	t.define("defineRule"     );
+	t.define("matchRule"      );
+	//t.define("dfaNode"); ?? has all "dfaTransition" children.
+	//t.define("dfaTransition"); child[0] == the GrammarNode that must match. child[1] == the next state to move into.
 	
 	return t;
 }
@@ -514,13 +520,19 @@ final class ParserBuilder(ElemType)
 	}
 	
 	/** Sequencing: Equivalent to the regex operation (ab). */
-	void pushOpSequence()         { pushOp(OpType.sequence); }
+	void pushSequence()         { pushOp(OpType.sequence); }
 	
 	/** Alternation: Equivalent to the PEG operation (a/b). */
-	void pushOpOrderedChoice()    { pushOp(OpType.orderedChoice); }
+	void pushOrderedChoice()    { pushOp(OpType.orderedChoice); }
 	
 	/** Alternation: Equivalent to the regex operation (a|b). */
-	void pushOpUnorderedChoice()  { pushOp(OpType.unorderedChoice); }
+	void pushUnorderedChoice()  { pushOp(OpType.unorderedChoice); }
+	
+	/** Alternation */
+	void pushShortestChoice()   { pushOp(OpType.shortestChoice); }
+	
+	/** Alternation */
+	void pushLongestChoice()    { pushOp(OpType.longestChoice); }
 	
 	/** 
 Intersection: An operation that only succeeds if all of its operands succeed.
@@ -531,14 +543,14 @@ Examples:
 --------------------
 // Example of two broad parsers being narrowed by OpIntersection:
 auto pb1 = new ParserBuilder!char;
-pb1.pushOpAnd();
-	pb1.pushOpOr();
-		pb1.operand('a');
-		pb1.operand('b');
+pb1.pushIntersection();
+	pb1.pushUnorderedChoice();
+		pb1.literal('a');
+		pb1.literal('b');
 	pb1.pop();
-	pb1.pushOpOr();
-		pb1.operand('b');
-		pb1.operand('c');
+	pb1.pushUnorderedChoice();
+		pb1.literal('b');
+		pb1.literal('c');
 	pb1.pop();
 pb1.pop();
 auto p1 = pb1.toParser();
@@ -548,16 +560,16 @@ assert(!p1.parse("c"));
 
 // Example of a parser that never matches anything:
 auto pb2 = new ParserBuilder!char;
-pb2.pushOpAnd();
-	pb2.operand('a');
-	pb2.operand('b');
+pb2.pushIntersection();
+	pb2.literal('a');
+	pb2.literal('b');
 pb2.pop();
 auto p2 = pb2.toParser();
 assert(!p2.parse("a"));
 assert(!p2.parse("b"));
 -------------------- 
 	*/
-	void pushOpIntersection()   { pushOp(OpType.intersection); }
+	void pushIntersection()   { pushOp(OpType.intersection); }
 	
 	/**
 	Equivalent to the regex operation (a?). 
@@ -565,7 +577,7 @@ assert(!p2.parse("b"));
 	Since this is a unary operation, if more than one operand is given, then the
 	operands are placed in a sequence that will then be operated on.
 	*/
-	void pushOpMaybe() { pushOp(OpType.maybe); }
+	void pushMaybe() { pushOp(OpType.maybe); }
 	
 	/**
 	Negates its operand.
@@ -573,16 +585,7 @@ assert(!p2.parse("b"));
 	Since this is a unary operation, if more than one operand is given, then the
 	operands are placed in a sequence that will then be operated on.
 	*/
-	void pushOpComplement()   { pushOp(OpType.complement); }
-	
-	/+
-	/**
-	Equivalent to the regex operation (a*).
-	
-	Since this is a unary operation, if more than one operand is given, then the
-	operands are placed in a sequence that will then be operated on.
-	*/
-	void pushOpGreedyZeroOrMore() { pushOp(opGreedyZeroOrMore); }
+	void pushComplement()   { pushOp(OpType.complement); }
 	
 	/**
 	Equivalent to the regex operation (a*?).
@@ -590,8 +593,32 @@ assert(!p2.parse("b"));
 	Since this is a unary operation, if more than one operand is given, then the
 	operands are placed in a sequence that will then be operated on.
 	*/
-	void pushOpLazyZeroOrMore() { pushOp(opLazyZeroOrMore); }
-	+/
+	void pushLazyRepeat() { pushOp(OpType.lazyRepeat); }
+	
+	/**
+	Equivalent to the regex operation (a*).
+	
+	Since this is a unary operation, if more than one operand is given, then the
+	operands are placed in a sequence that will then be operated on.
+	*/
+	void pushGreedyRepeat() { pushOp(OpType.greedyRepeat); }
+	
+	/**
+	Equivalent to the PEG exression (a*).
+	
+	It is distinct from greedy repetition in that it will consume all available
+	input that matches the operand repeated, even if this makes expressions
+	later in sequence fail to match globally when they would have otherwise
+	succeeded if repitition terminated earlier.  As an example of this
+	difference, consider that the regex a*a would match the string "aaa" whereas
+	the PEG a*a would not match "aaa".  The PEG would match all three a's with
+	the a* portion and then fail because there is no text left with which to
+	match the last 'a' in the expression.
+	
+	Since this is a unary operation, if more than one operand is given, then the
+	operands are placed in a sequence that will then be operated on.
+	*/
+	void pushFullRepeat() { pushOp(OpType.fullRepeat); }
 	
 	/** Terminates a list of operands for an operator given by pushOpName(). */
 	void pop()
@@ -599,27 +626,6 @@ assert(!p2.parse("b"));
 		auto temp = parent;
 		parent = parents.removeAny();
 		parent.insertBack(temp);
-	/+
-		auto op = operatorStack.removeAny();
-		auto operands = operandStack.removeAny();
-		
-		auto node = Node(op, operands.length);
-		size_t i = 0;
-		while ( operands.length > 0 )
-			node.children[i++] = operands.removeAny();
-		
-		
-		if ( operatorStack.length == 0 )
-		{
-			root = Node(sequence,1);
-			root.children[0] = node;
-		}
-		else
-		{
-			auto parentOperands = operatorStack.removeAny();
-			parentOperands.insertBack(node);
-		}
-	+/
 	}
 	
 	void literal( ElemType elem )
@@ -638,8 +644,8 @@ assert(!p2.parse("b"));
 	unittest
 	{
 		auto pba = new ParserBuilder!char();
-		pba.pushOpSequence();
-			pba.pushOpUnorderedChoice();
+		pba.pushSequence();
+			pba.pushUnorderedChoice();
 				pba.literal('x');
 				pba.literal('y');
 			pba.pop();
@@ -719,6 +725,42 @@ assert(!p2.parse("b"));
 		assert( n.values[1] == 'b' );
 		assert( n.values[2] == 'c' );
 	}
+
+	string toString()
+	{
+		
+		return root.toString();
+	}
+	
+	unittest
+	{/+
+	writeln("???");
+		auto builder = new ParserBuilder!char;
+	writeln("???");
+		builder.pushOpSeq();
+			builder.literal('x');
+			builder.pushOpMaybe();
+				builder.literal('y');
+			builder.pop();
+		builder.pop();
+	writeln(builder.toString());+/
+	}
+
+}
+
+void main()
+{
+	auto builder = new ParserBuilder!char;
+	builder.pushSequence();
+		builder.literal('x');
+		builder.pushMaybe();
+			builder.literal('y');
+		builder.pop();
+	builder.pop();
+	writefln(builder.toString());
+}
+
+
 
 /+
 	private Fragment assembleSeq( SList!Fragment operands )
@@ -917,37 +959,3 @@ builder.push!("and");
 	builder.operand(savedNfa2);
 builder.pop();
 +/
-
-	string toString()
-	{
-		
-		return root.toString();
-	}
-	
-	unittest
-	{/+
-	writeln("???");
-		auto builder = new ParserBuilder!char;
-	writeln("???");
-		builder.pushOpSeq();
-			builder.literal('x');
-			builder.pushOpMaybe();
-				builder.literal('y');
-			builder.pop();
-		builder.pop();
-	writeln(builder.toString());+/
-	}
-
-}
-
-void main()
-{
-	auto builder = new ParserBuilder!char;
-	builder.pushOpSequence();
-		builder.literal('x');
-		builder.pushOpMaybe();
-			builder.literal('y');
-		builder.pop();
-	builder.pop();
-	writefln(builder.toString());
-}
