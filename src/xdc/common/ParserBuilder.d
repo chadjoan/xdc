@@ -6,6 +6,50 @@ import std.container;
 import std.range;
 import std.stdio;
 
+/+
+Unitary Expression: an expression that, given an input string, has only one 
+  possible match (only one match.end is possible).
+  PEG rules are unitary expressions.
+  Terminals are unitary expressions as well.
+  Ex: aa/a on the input "aaa" has only one match: [aa]a
+
+Nonunitary Expression: an expression that, given an input string, has many
+  possible matches.
+  Regular expression operators are nonunitary expressions.
+  Ex: aa|a on the input "aaa" may match [a]aa or [aa]a depending on whether the
+    code driving the expression requests 1 or 2 characters.
+
+Both unitary and nonunitary expressions may reside within regular expressions.
+Only unitary expressions are allowed in PEGs.
+Nonunitary expressions can be converted into unitary expressions by using some
+  manner of rule to disambiguate which match to take.  Intuitively, we define
+  "longest" and "shortest" rules to accomplish this.
+We can thus create unitary expressions with nonunitary subexpressions, and
+  gain some of the convenience of regular expressions within more powerful
+  constructs like PEGs.
+
+Nonunitary expressions are not reentrant without an explosion of algorithmic
+  complexity.  This prevents PEGs from having things like unordered choice:
+    A <- b*aB
+    B <- (A|b*)
+  In this case, the rule called within the unordered choice (the | operator)
+  will invoke B again and reenter the choice without first resolving the succuss
+  of the first unordered choice entry.  This ambiguity can result in repeated
+  backtracking.
+  (TODO: is this example good? maybe use a better one that will obviously create
+    a lot of backtracking.)
+
+The concatenation of a nonunitary expression and a unitary expression is nonunitary.
+
+PEG elements may not follow nonunitary expressions in concatenation without
+  suffering a large penalty in algorithmic complexity.  This arrangement
+  requires nonlocal backtracing out of failed matches of the PEG until a place
+  on the input is found where the nonunitary expression before it matches and
+  the PEG also matches the text ahead of it.  To maintain linear complexity,
+  such nonlinear expressions preceding PEGs must be disambiguated with some
+  rule like longest-match or shortest-match.
+
++/
 
 auto min(T, U)( T a, U b )
 {
@@ -323,8 +367,8 @@ private struct OpTypeTable
 		string result = "";
 		
 		result ~= "enum OpType\n{\n";
-		for ( int i = 0; i < enumNames.length; i++ )
-			result ~= "\t" ~ enumNames[i] ~ ",\n";
+		foreach( name; enumNames )
+			result ~= "\t" ~ name ~ ",\n";
 		result ~= "}\n";
 		
 		return result;
@@ -354,20 +398,20 @@ private OpTypeTable defineOpTypes()
 {
 	OpTypeTable t;
 	
-	t.define("literal"        );
-	t.define("sequence"       );
-	t.define("orderedChoice"  );
-	t.define("unorderedChoice");
-	t.define("shortestChoice" );
-	t.define("longestChoice"  );
-	t.define("intersection"   );
-	t.define("maybe"          );
-	t.define("complement"     );
-	t.define("lazyRepeat"     );
-	t.define("greedyRepeat"   );
-	t.define("fullRepeat"     );
-	t.define("defineRule"     );
-	t.define("matchRule"      );
+	t.define("literal"          );
+	t.define("sequence"         );
+	t.define("orderedChoice"    );
+	t.define("unorderedChoice"  );
+	t.define("intersection"     );
+	t.define("maybe"            );
+	t.define("complement"       );
+	t.define("negLookAhead"     );
+	t.define("posLookAhead"     );
+	t.define("lazyRepeat"       );
+	t.define("greedyRepeat"     );
+	t.define("fullRepeat"       );
+	t.define("defineRule"       );
+	t.define("matchRule"        );
 	//t.define("dfaNode"); ?? has all "dfaTransition" children.
 	//t.define("dfaTransition"); child[0] == the GrammarNode that must match. child[1] == the next state to move into.
 	
@@ -465,6 +509,195 @@ struct GrammarNode(ElemType)
 		return toString(0);
 	}
 	
+	public struct DCode
+	{
+		string code;
+		string entryFuncName;
+	}
+	
+	private string dCodeLiteral(ref string suffix, ref string[int] symbolsById)
+	{
+		assert( values.length == 1, "Flattened literals are currently unsupported." );
+		return
+			"\t\t/* Literal */\n"~
+			"\t\tif ( cursor > ubound )\n"~
+			"\t\t\treturn Match.failure(inputRange);\n"~
+			"\t\telse if ( inputRange[cursor] == "~values[0]~" )\n"~ // TODO!  How is equality/matching going to work for non-strings?
+			"\t\t\treturn Match.success(inputRange, cursor, cursor+1);\n"~
+			"\t\telse\n"~
+			"\t\t\treturn Match.failure(inputRange);\n";
+	}
+	
+	private string dCodeSequence(ref string suffix, ref string[int] symbolsById)
+	{
+		assert(children.length >= 1);
+		string result = "\t\t/* Sequence */\n";
+		string prevCursor = "cursor";
+		
+		foreach ( i, child; children )
+		{
+			DCode childCode = child.toDCode(symbolsById);
+			suffix ~= childCode.code;
+			
+			string thisMatchName = "m"~std.conv.to!string(i);
+			result ~=
+				"\t\tauto "~thisMatchName~" = "~childCode.entryFuncName~
+						"(inputRange, "~prevCursor~", ubound);\n"~
+				"\t\tif ( !"~thisMatchName~".successful )\n"~
+				"\t\t\treturn Match.failure(inputRange);\n\n";
+			
+			prevCursor = "m"~std.conv.to!string(i)~".end";
+		}
+		
+		result ~=
+			"\t\treturn Match.success(inputRange, m0.begin, "~prevCursor~");\n";
+		
+		return result;
+	}
+	
+	private string dCodeOrderedChoice(ref string suffix, ref string[int] symbolsById)
+	{
+		assert(children.length >= 1);
+		string result = "\t\t/* Ordered Choice */\n";
+		
+		foreach ( i, child; children )
+		{
+			DCode childCode = child.toDCode(symbolsById);
+			suffix ~= childCode.code;
+			
+			string thisMatchName = "m"~std.conv.to!string(i);
+			result ~=
+				"\t\tauto "~thisMatchName~" = "~childCode.entryFuncName~
+						"(inputRange, cursor, ubound);\n"~
+				"\t\tif ( "~thisMatchName~".successful )\n"~
+				"\t\t\treturn Match.success("~
+					"inputRange, "~
+					thisMatchName~".being, "~
+					thisMatchName~".end);\n\n";
+		}
+		
+		result ~=
+			"\t\treturn Match.failure(inputRange);\n";
+
+		return result;
+	}
+	
+	private string dCodeMaybe(ref string suffix, ref string[int] symbolsById)
+	{
+		assert(children.length == 1);
+		return
+			"\t\t/* Maybe */\n"~
+			dCodeOrderedChoice(suffix,symbolsById);
+	}
+	
+	private string dCodeNegLookAhead(ref string suffix, ref string[int] symbolsById)
+	{
+		assert(children.length == 1);
+		
+		DCode childCode = children[0].toDCode(symbolsById);
+		suffix ~= childCode.code;
+		
+		return
+			"\t\t/* Negative Lookahead */\n"~
+			"\t\tauto m = "~childCode.entryFuncName~
+					"(inputRange, newCursor, ubound);\n"~
+			"\t\tif ( !m.successful )\n"~
+			"\t\t\treturn Match.success(inputRange, cursor, cursor);\n"~
+			"\t\telse\n"~
+			"\t\t\treturn Match.failure(inputRange);\n";
+	}
+	
+	private string dCodePosLookAhead(ref string suffix, ref string[int] symbolsById)
+	{
+		assert(children.length == 1);
+		
+		DCode childCode = children[0].toDCode(symbolsById);
+		suffix ~= childCode.code;
+		
+		return
+			"\t\t/* Positive Lookahead */\n"~
+			"\t\tauto m = "~childCode.entryFuncName~
+					"(inputRange, newCursor, ubound);\n"~
+			"\t\tif ( m.successful )\n"~
+			"\t\t\treturn Match.success(inputRange, cursor, cursor);\n"~
+			"\t\telse\n"~
+			"\t\t\treturn Match.failure(inputRange);\n";
+	}
+	
+	private string dCodeFullRepeat(ref string suffix, ref string[int] symbolsById)
+	{
+		assert(children.length == 1);
+		
+		DCode childCode = children[0].toDCode(symbolsById);
+		suffix ~= childCode.code;
+		
+		return
+			"\t\t/* Repetition */\n"~
+			"\t\tsize_t newCursor = cursor;\n"~
+			"\t\twhile ( true )\n"~
+			"\t\t{\n"~
+			"\t\t\tauto m = "~childCode.entryFuncName~
+						"(inputRange, newCursor, ubound);\n"~
+			"\t\t\tif ( !m.successful )\n"~
+			"\t\t\t\tbreak;\n"~
+			"\n"~
+			"\t\t\tnewCursor = m.end;\n"~
+			"\t\t}\n"~
+			"\n"~
+			"\t\treturn Match.success(inputRange, cursor, newCursor);\n";
+	}
+	
+	DCode toDCode(ref string[int] symbolsById)
+	{
+		DCode result;
+		
+		int thisFuncId = symbolsById.length;
+		result.entryFuncName = "n"~std.conv.to!string(thisFuncId);
+		symbolsById[thisFuncId] = result.entryFuncName;
+		
+		result.code = "";
+		string suffix = "";
+		
+		const string funcParams =
+			"( const"~ElemType.stringof~"[] inputRange, size_t cursor, size_t ubound )";
+		
+		string funcHeader = 
+		
+		result.code ~=
+			"\tMatch "~result.entryFuncName ~ funcParams ~ "\n"~
+			"\t{\n";
+
+		final switch( type )
+		{
+			case OpType.literal:         result.code ~= dCodeLiteral(suffix,symbolsById); break;
+			case OpType.sequence:        result.code ~= dCodeSequence(suffix,symbolsById); break;
+			case OpType.orderedChoice:   result.code ~= dCodeOrderedChoice(suffix,symbolsById); break;
+			case OpType.maybe:           result.code ~= dCodeMaybe(suffix,symbolsById); break;
+			case OpType.negLookAhead:    result.code ~= dCodeNegLookAhead(suffix,symbolsById); break;
+			case OpType.posLookAhead:    result.code ~= dCodePosLookAhead(suffix,symbolsById); break;
+			case OpType.fullRepeat:      result.code ~= dCodeFullRepeat(suffix,symbolsById); break;
+			case OpType.matchRule:       throw new Exception("Currently unimplemented.  Needs more node polymorphism?");
+			case OpType.intersection:    throw new Exception("Intersection is currently unimplemented.  It requires some NFA/DFA work.");
+			case OpType.unorderedChoice: throw new Exception("Unordered choice is currently unimplemented.  It requires some NFA/DFA work.");
+			case OpType.complement:      throw new Exception("Complement is currently unimplemented.  It requires some NFA/DFA work.");
+			case OpType.lazyRepeat:      throw new Exception("Lazy Repetition is currently unimplemented.  It requires some NFA/DFA work.");
+			case OpType.greedyRepeat:    throw new Exception("Greedy Repetition is currently unimplemented.  It requires some NFA/DFA work.");
+			case OpType.defineRule:      throw new Exception("This is currently not a valid node.");
+		}
+		
+		result.code ~=
+			"\t}\n"~
+			"\n"~suffix;
+
+		return result;
+	}
+	
+	DCode toDCode()
+	{
+		string[int] symbolsById;
+		return toDCode(symbolsById);
+	}
+	
 	pure Node* deepCopy() const
 	{
 		Node* result = (new Node[1]).ptr; // Hack.  There has to be a better way to allocate one of these with 0-args?
@@ -480,6 +713,145 @@ struct GrammarNode(ElemType)
 		return result;
 	}
 }
+
+struct Match(ElemType)
+{
+	bool successful;
+	const(ElemType[])[] matches;
+	
+	const ElemType[] input;
+	size_t begin, end;
+}
+
+/+
+// Just sketching what a generated parser might look like.
+final class Parser(ElemType)
+{
+	alias Match!ElemType Match;
+	
+	Match foo(const ElemType[] inputRange, size_t cursor, size_t ubound)
+	{
+		/* Sequence */
+		auto m1 = bar(inputRange,cursor,ubound);
+		if ( !m1.successful )
+			return Match.failure(inputRange);
+
+		auto m2 = baz(inputRange,m1.end,ubound);
+		if ( !m2.successful )
+			return Match.failure(inputRange);
+		
+		return Match.success(inputRange, m1.begin, m2.end); /* Success. */
+	}
+	
+	Match foo(const ElemType[] inputRange, size_t cursor, size_t ubound)
+	{
+		/* Intersection */
+		auto m1 = bar(text,cursor,limit);
+		if ( !m1.successful )
+			return Match.failure(inputRange);
+		
+		auto m2 = baz(text,cursor,m1);
+		if ( !m2.successful )
+			return Match.failure(inputRange);
+		
+		auto m3 = qux(text,cursor,m2);
+		if ( !m3.successful )
+			return Match.failure(inputRange);
+		
+		if ( m1.end == m2.end && m2.end == m3.end )
+			return Match.success(inputRange, m0.begin, m0.end);
+		else
+			return Match.failure(inputRange);
+	}
+	
+	Match foo(const ElemType[] inputRange, size_t cursor, size_t ubound)
+	{
+		/* Ordered Choice */
+		size_t p1 = bar(text,cursor,limit);
+		if ( p1 != cursor )
+			return p1; /* Success. */
+
+		size_t p2 = baz(text,cursor,limit);
+		if ( p2 != cursor )
+			return p2; /* Success. */
+		
+		return cursor; /* Fail. */
+	}
+	
+	Match foo(const ElemType[] inputRange, size_t cursor, size_t ubound)
+	{
+		/* Shortest Choice */
+		size_t p1 = bar(text,cursor,limit);
+		size_t p2 = baz(text,cursor,limit);
+		
+		if ( p1 == cursor )
+			return p2;
+		if ( p2 == cursor )
+			return p1;
+		
+		return min(p1,p2);
+	}
+	
+	Match foo(const ElemType[] inputRange, size_t cursor, size_t ubound)
+	{
+		/* Longest Choice */
+		size_t p1 = bar(text,cursor,limit);
+		size_t p2 = baz(text,cursor,limit);
+		
+		if ( p1 == cursor )
+			return p2;
+		if ( p2 == cursor )
+			return p1;
+		
+		return max(p1,p2);
+	}
+	
+	Match foo(const ElemType[] inputRange, size_t cursor, size_t ubound)
+	{
+		/* Maybe */
+		auto m1 = bar(inputRange,cursor,ubound);
+		if ( m1.successful )
+			return Match.success(inputRange, m1.begin, m1.end);
+		
+		return Match.failure(inputRange);
+
+	}
+	
+	Match foo(const ElemType[] inputRange, size_t cursor, size_t ubound)
+	{
+		/* Repetition */
+		size_t newCursor = cursor;
+		while ( true )
+		{
+			auto m0 = bar(inputRange, newCursor, ubound);
+			if ( !m0.successful )
+				break;
+			
+			newCursor = m0.end;
+		}
+		
+		return Match.success(inputRange, cursor, newCursor);
+	}
+	
+	Match foo(const ElemType[] inputRange, size_t cursor, size_t ubound)
+	{
+		/* Complement */
+		auto m1 = bar(inputRange,cursor,ubound);
+		if ( m1.successful )
+			return Match.success(inputRange, m1.begin, m1.end);
+		
+		return Match.failure(inputRange);
+
+	}
+	
+	/+
+	(ab*a/aba*)c
+	abaa
+	[aba]ac !
+	[abaac]
+	+/
+}
++/
 
 final class ParserBuilder(ElemType)
 {
@@ -503,9 +875,9 @@ final class ParserBuilder(ElemType)
 	
 	void initialize()
 	{
-		//operatorStack = make!(SList, OpType)();
-		//operandStack  = make!(SList, SList!Node)();
 		parents = make!(SList!(Node*))(cast(Node*[])[]);
+		
+		// TODO: Maybe this should be OpType.define with a name of "opCall"
 		root = new Node(OpType.sequence);
 		parent = root;
 	}
@@ -515,8 +887,6 @@ final class ParserBuilder(ElemType)
 		assert(op != OpType.literal);
 		parents.insertFront(parent);
 		parent = new Node(op);
-		//operatorStack.insertFront(op);
-		//operandStack.insertFront(make!(SList, Fragment));
 	}
 	
 	/** Sequencing: Equivalent to the regex operation (ab). */
@@ -527,12 +897,6 @@ final class ParserBuilder(ElemType)
 	
 	/** Alternation: Equivalent to the regex operation (a|b). */
 	void pushUnorderedChoice()  { pushOp(OpType.unorderedChoice); }
-	
-	/** Alternation */
-	void pushShortestChoice()   { pushOp(OpType.shortestChoice); }
-	
-	/** Alternation */
-	void pushLongestChoice()    { pushOp(OpType.longestChoice); }
 	
 	/** 
 Intersection: An operation that only succeeds if all of its operands succeed.
@@ -623,6 +987,21 @@ assert(!p2.parse("b"));
 	/** Terminates a list of operands for an operator given by pushOpName(). */
 	void pop()
 	{
+		// TODO:
+		// Lower
+		//   pb.pushMaybe(); // Some unary operator.
+		//       pb.literal('a');
+		//       pb.literal('b');
+		//   pb.pop();
+		// into
+		//   pb.pushMaybe(); // Some unary operator.
+		//       pb.pushSequence(); // Intuitive n-ary operator that returns unary result.
+		//           pb.literal('a');
+		//           pb.literal('b');
+		//       pb.pop();
+		//   pb.pop();
+		//
+		
 		auto temp = parent;
 		parent = parents.removeAny();
 		parent.insertBack(temp);
@@ -633,7 +1012,7 @@ assert(!p2.parse("b"));
 		parent.insertBack(new Node(elem));
 	}
 	
-	void parser( const ParserBuilder pb )
+	void compose( const ParserBuilder pb )
 	{
 		if ( pb is this )
 			throw new Exception("Adding a parser to itself is not supported."
@@ -658,7 +1037,7 @@ assert(!p2.parse("b"));
 		Node* a5 = a3.children[1]; // y
 		
 		auto pbb = new ParserBuilder!char();
-		pbb.parser(pba);
+		pbb.compose(pba);
 		
 		// pbb.root is it's own implicit opSequence.
 		Node* b1 = pbb.root.children[0]; // pba's former implicit opSequence (copy of).
@@ -728,22 +1107,26 @@ assert(!p2.parse("b"));
 
 	string toString()
 	{
-		
 		return root.toString();
 	}
 	
-	unittest
-	{/+
-	writeln("???");
-		auto builder = new ParserBuilder!char;
-	writeln("???");
-		builder.pushOpSeq();
-			builder.literal('x');
-			builder.pushOpMaybe();
-				builder.literal('y');
-			builder.pop();
-		builder.pop();
-	writeln(builder.toString());+/
+	string toDCode(string name)
+	{
+		assert(name != null);
+
+		// TODO: eliminateNullaryExpressions(root);
+		
+		auto guts = root.toDCode();
+		
+		string result =
+			"struct "~name~"(ElemType)\n"~
+			"{\n"~
+			"\talias Match!ElemType Match;\n"~
+			"\n"~
+			guts.code~
+			"}\n";
+		
+		return result;
 	}
 
 }
@@ -758,6 +1141,9 @@ void main()
 		builder.pop();
 	builder.pop();
 	writefln(builder.toString());
+	writefln("");
+	writefln("Now then, let's do this.\n");
+	writeln(builder.toDCode("YoDawg"));
 }
 
 
