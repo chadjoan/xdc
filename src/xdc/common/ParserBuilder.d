@@ -398,6 +398,7 @@ private OpTypeTable defineOpTypes()
 {
 	OpTypeTable t;
 	
+	t.define("epsilon"          );
 	t.define("literal"          );
 	t.define("sequence"         );
 	t.define("orderedChoice"    );
@@ -422,10 +423,10 @@ const opTypeTable = defineOpTypes();
 mixin(opTypeTable.emitEnum());
 mixin(opTypeTable.emitToStringFunc());
 
-struct GrammarNode(ElemType)
+final class GrammarNode(ElemType)
 {
 	alias typeof(this) Node;
-	alias Node*[] ChildList;
+	alias Node[] ChildList;
 	
 	OpType type;
 	
@@ -459,7 +460,7 @@ struct GrammarNode(ElemType)
 		return m_values;
 	}
 	
-	void insertBack( Node* child )
+	void insertBack( Node child )
 	{
 		assert( type != OpType.literal );
 		m_children ~= child;
@@ -471,12 +472,14 @@ struct GrammarNode(ElemType)
 		m_values ~= value;
 	}
 	
+	this() {}
+	
 	/* Used for non-literal construction. */
 	this(OpType type)
 	{
 		assert(type != OpType.literal);
 		this.type = type;
-		this.children = new Node*[0]; //make!(SList, Node)();
+		this.children = new Node[0];
 	}
 	
 	this(size_t nElements)
@@ -490,6 +493,13 @@ struct GrammarNode(ElemType)
 		this.type = OpType.literal;
 		this.m_values = new ElemType[1];
 		this.m_values[0] = elem;
+	}
+	
+	static Node epsilon()
+	{
+		auto n = new Node();
+		n.type = OpType.epsilon;
+		return n;
 	}
 	
 	string toString( uint depth ) const
@@ -515,14 +525,21 @@ struct GrammarNode(ElemType)
 		string entryFuncName;
 	}
 	
+	private string dCodeEpsilon(ref string suffix, ref string[int] symbolsById)
+	{
+		return
+			"\t\t/* Epsilon */\n"~
+			"\t\treturn Match.success(inputRange, cursor, cursor);\n";
+	}
+	
 	private string dCodeLiteral(ref string suffix, ref string[int] symbolsById)
 	{
 		assert( values.length == 1, "Flattened literals are currently unsupported." );
 		return
 			"\t\t/* Literal */\n"~
-			"\t\tif ( cursor > ubound )\n"~
+			"\t\tif ( cursor >= ubound )\n"~
 			"\t\t\treturn Match.failure(inputRange);\n"~
-			"\t\telse if ( inputRange[cursor] == "~values[0]~" )\n"~ // TODO!  How is equality/matching going to work for non-strings?
+			"\t\telse if ( inputRange[cursor] == '"~values[0]~"' )\n"~ // TODO!  How is equality/matching going to work for non-strings?
 			"\t\t\treturn Match.success(inputRange, cursor, cursor+1);\n"~
 			"\t\telse\n"~
 			"\t\t\treturn Match.failure(inputRange);\n";
@@ -572,7 +589,7 @@ struct GrammarNode(ElemType)
 				"\t\tif ( "~thisMatchName~".successful )\n"~
 				"\t\t\treturn Match.success("~
 					"inputRange, "~
-					thisMatchName~".being, "~
+					thisMatchName~".begin, "~
 					thisMatchName~".end);\n\n";
 		}
 		
@@ -580,14 +597,6 @@ struct GrammarNode(ElemType)
 			"\t\treturn Match.failure(inputRange);\n";
 
 		return result;
-	}
-	
-	private string dCodeMaybe(ref string suffix, ref string[int] symbolsById)
-	{
-		assert(children.length == 1);
-		return
-			"\t\t/* Maybe */\n"~
-			dCodeOrderedChoice(suffix,symbolsById);
 	}
 	
 	private string dCodeNegLookAhead(ref string suffix, ref string[int] symbolsById)
@@ -659,20 +668,22 @@ struct GrammarNode(ElemType)
 		string suffix = "";
 		
 		const string funcParams =
-			"( const"~ElemType.stringof~"[] inputRange, size_t cursor, size_t ubound )";
+			"( const "~ElemType.stringof~"[] inputRange, size_t cursor, size_t ubound )";
 		
 		string funcHeader = 
 		
 		result.code ~=
-			"\tMatch "~result.entryFuncName ~ funcParams ~ "\n"~
-			"\t{\n";
+			"\tstatic Match "~result.entryFuncName ~ funcParams ~ "\n"~
+			"\t{\n"~
+			"\t\twritefln(\""~result.entryFuncName~"(%s,%s,%s)\",inputRange,cursor,ubound);\n";
+			
 
 		final switch( type )
 		{
+			case OpType.epsilon:         result.code ~= dCodeEpsilon(suffix,symbolsById); break;
 			case OpType.literal:         result.code ~= dCodeLiteral(suffix,symbolsById); break;
 			case OpType.sequence:        result.code ~= dCodeSequence(suffix,symbolsById); break;
 			case OpType.orderedChoice:   result.code ~= dCodeOrderedChoice(suffix,symbolsById); break;
-			case OpType.maybe:           result.code ~= dCodeMaybe(suffix,symbolsById); break;
 			case OpType.negLookAhead:    result.code ~= dCodeNegLookAhead(suffix,symbolsById); break;
 			case OpType.posLookAhead:    result.code ~= dCodePosLookAhead(suffix,symbolsById); break;
 			case OpType.fullRepeat:      result.code ~= dCodeFullRepeat(suffix,symbolsById); break;
@@ -683,6 +694,7 @@ struct GrammarNode(ElemType)
 			case OpType.lazyRepeat:      throw new Exception("Lazy Repetition is currently unimplemented.  It requires some NFA/DFA work.");
 			case OpType.greedyRepeat:    throw new Exception("Greedy Repetition is currently unimplemented.  It requires some NFA/DFA work.");
 			case OpType.defineRule:      throw new Exception("This is currently not a valid node.");
+			case OpType.maybe:           assert(0, "'maybe' expressions should always be lowered into choice expressions before a parser is emitted.");
 		}
 		
 		result.code ~=
@@ -698,15 +710,15 @@ struct GrammarNode(ElemType)
 		return toDCode(symbolsById);
 	}
 	
-	pure Node* deepCopy() const
+	pure Node deepCopy() const
 	{
-		Node* result = (new Node[1]).ptr; // Hack.  There has to be a better way to allocate one of these with 0-args?
+		Node result = new Node();
 		result.type = this.type;
 		if ( type == OpType.literal )
 			result.m_values = this.m_values.dup;
 		else
 		{
-			result.m_children = new Node*[this.m_children.length];
+			result.m_children = new Node[this.m_children.length];
 			foreach( i, child; this.m_children )
 				result.m_children[i] = this.m_children[i].deepCopy();
 		}
@@ -714,13 +726,38 @@ struct GrammarNode(ElemType)
 	}
 }
 
-struct Match(ElemType)
+struct MatchT(ElemType)
 {
+	alias typeof(this) Match;
+
 	bool successful;
-	const(ElemType[])[] matches;
+	const(ElemType)[][] matches;
 	
-	const ElemType[] input;
+	const(ElemType)[] input;
 	size_t begin, end;
+	
+	static Match success(const ElemType[] input, size_t begin, size_t end)
+	{
+		Match m;
+		m.successful = true;
+		m.matches = new const(ElemType)[][1];
+		m.matches[0] = input[begin..end]; // TODO: have a way to be more complex.
+		m.input = input;
+		m.begin = begin;
+		m.end = end;
+		return m;
+	}
+	
+	pure static Match failure(const ElemType[] input)
+	{
+		Match m;
+		m.successful = false;
+		m.matches = null;
+		m.input = input;
+		m.begin = 0;
+		m.end = 0;
+		return m;
+	}
 }
 
 /+
@@ -862,11 +899,13 @@ final class ParserBuilder(ElemType)
 	+/
 	private alias GrammarNode!ElemType       Node;
 	
+	bool delayNecessaryLowerings = false;
+	
 	//private SList!OpType operatorStack;
 	//private SList!SList!Node operandStack;
-	private SList!(Node*) parents;
-	private Node* parent = null;
-	private Node* root = null;
+	private SList!(Node) parents;
+	private Node parent = null;
+	private Node root = null;
 	
 	this()
 	{
@@ -875,7 +914,7 @@ final class ParserBuilder(ElemType)
 	
 	void initialize()
 	{
-		parents = make!(SList!(Node*))(cast(Node*[])[]);
+		parents = make!(SList!(Node))(cast(Node[])[]);
 		
 		// TODO: Maybe this should be OpType.define with a name of "opCall"
 		root = new Node(OpType.sequence);
@@ -1003,7 +1042,12 @@ assert(!p2.parse("b"));
 		//
 		
 		auto temp = parent;
+		
 		parent = parents.removeAny();
+		
+		if ( !delayNecessaryLowerings )
+			temp = necessaryLowerings(temp);
+
 		parent.insertBack(temp);
 	}
 	
@@ -1030,21 +1074,21 @@ assert(!p2.parse("b"));
 			pba.pop();
 		pba.pop();
 		
-		Node* a1 = pba.root; // Implicit sequence
-		Node* a2 = a1.children[0]; // pushOpSequence
-		Node* a3 = a2.children[0]; // pushOpUnorderedChoice
-		Node* a4 = a3.children[0]; // x
-		Node* a5 = a3.children[1]; // y
+		Node a1 = pba.root; // Implicit sequence
+		Node a2 = a1.children[0]; // pushOpSequence
+		Node a3 = a2.children[0]; // pushOpUnorderedChoice
+		Node a4 = a3.children[0]; // x
+		Node a5 = a3.children[1]; // y
 		
 		auto pbb = new ParserBuilder!char();
 		pbb.compose(pba);
 		
 		// pbb.root is it's own implicit opSequence.
-		Node* b1 = pbb.root.children[0]; // pba's former implicit opSequence (copy of).
-		Node* b2 = b1.children[0]; // copy of pba.pushOpSequence
-		Node* b3 = b2.children[0]; // copy of pba.pushOpUnorderedChoice
-		Node* b4 = b3.children[0]; // copy of pba.literal('x')
-		Node* b5 = b3.children[1]; // copy of pba.literal('y')
+		Node b1 = pbb.root.children[0]; // pba's former implicit opSequence (copy of).
+		Node b2 = b1.children[0]; // copy of pba.pushOpSequence
+		Node b3 = b2.children[0]; // copy of pba.pushOpUnorderedChoice
+		Node b4 = b3.children[0]; // copy of pba.literal('x')
+		Node b5 = b3.children[1]; // copy of pba.literal('y')
 		
 		assert( b1.type == OpType.sequence );
 		assert( b2.type == OpType.sequence );
@@ -1052,14 +1096,39 @@ assert(!p2.parse("b"));
 		assert( b4.type == OpType.literal );
 		assert( b5.type == OpType.literal );
 		
-		assert( a1 != b1 );
-		assert( a2 != b2 );
-		assert( a3 != b3 );
-		assert( a4 != b4 );
-		assert( a5 != b5 );
+		assert( a1 !is b1 );
+		assert( a2 !is b2 );
+		assert( a3 !is b3 );
+		assert( a4 !is b4 );
+		assert( a5 !is b5 );
 	}
 	
-	private static Node* flattenLiterals( Node* n )
+	private static Node coalesceUnaryArgs( Node n )
+	{
+		// TODO:
+		// if ( n.isUnary() )
+		//     new Node ... etc
+		return n;
+	}
+	
+	private static Node lowerMaybeIntoChoice( Node n )
+	{
+		if ( n.type == OpType.maybe )
+		{
+			n.type = OpType.orderedChoice;
+			n.insertBack(Node.epsilon());
+		}
+		return n;
+	}
+	
+	private static Node necessaryLowerings( Node n )
+	{
+		n = coalesceUnaryArgs(n); // Must go before unary ops get lowered into other things.
+		n = lowerMaybeIntoChoice(n);
+		return n;
+	}
+	
+	private static Node flattenLiterals( Node n )
 	{
 		if ( n.type != OpType.sequence )
 			return n;
@@ -1119,9 +1188,9 @@ assert(!p2.parse("b"));
 		auto guts = root.toDCode();
 		
 		string result =
-			"struct "~name~"(ElemType)\n"~
+			"struct "~name~"\n"~
 			"{\n"~
-			"\talias Match!ElemType Match;\n"~
+			"\talias MatchT!"~ElemType.stringof~" Match;\n"~
 			"\n"~
 			guts.code~
 			"}\n";
@@ -1130,6 +1199,26 @@ assert(!p2.parse("b"));
 	}
 
 }
+
+
+string makeParser()
+{
+	auto builder = new ParserBuilder!char;
+	builder.pushSequence();
+		builder.literal('x');
+		builder.pushMaybe();
+			builder.literal('y');
+		builder.pop();
+	builder.pop();
+	return builder.toDCode("YoDawg");
+}
+
+const foo = makeParser();
+
+pragma(msg, foo);
+
+mixin(foo);
+
 
 void main()
 {
@@ -1142,8 +1231,19 @@ void main()
 	builder.pop();
 	writefln(builder.toString());
 	writefln("");
-	writefln("Now then, let's do this.\n");
-	writeln(builder.toDCode("YoDawg"));
+	
+	auto m = YoDawg.n0("x",0,1);
+	writefln("%s",m.successful);
+	m = YoDawg.n0("xy",0,2);
+	writefln("%s",m.successful);
+	m = YoDawg.n0("xyz",0,3);
+	writefln("%s",m.successful);
+	m = YoDawg.n0("q",0,1);
+	writefln("%s",m.successful);
+	m = YoDawg.n0("",0,0);
+	writefln("%s",m.successful);
+	//writefln("Now then, let's do this.\n");
+	//writeln(foo);
 }
 
 
