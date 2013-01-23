@@ -9,7 +9,7 @@ PEGGED_FILES="
  ${PEGGED_PATH}/examples/dgrammar.d
 "
 
-ALL_FILES="${PEGGED_FILES} src/xdc/common/*.d src/xdc/rules/*.d -Isrc"
+ALL_FILES="${PEGGED_FILES} src/xdc/parser_builder/*.d src/xdc/common/*.d src/xdc/rules/*.d -Isrc"
 DFLAGS="-g -debug -odobj -unittest"
 
 mkdir -p obj
