@@ -336,8 +336,8 @@ template AutomatonFuncs(ElemType)
 	// Given (a/b) == (a|(^a&b))
 	// Then ^(a/b) == ^(a|(^a&b)) == (^a|^(^a&b)) == (^a|(a&^b)) == (^a/^b)
 
-	// The working conjecture is that (uv/xy)c == (uv|(^(uv)&xy)c
-	//   (or, by De Morgan's law: (uv/xy)c == (uv|(^(uv|^(xy)))c )
+	// The working conjecture is that (uv/xy)c == (uv|(^(uv)&xy))c
+	//   (or, by De Morgan's law: (uv/xy)c == (uv|(^(uv|^(xy))))c )
 	// It makes some amount of sense: xy is only chosen if uv is never chosen,
 	//   therefore that branch of the NFA must recognize strings that are uv
 	//   but not xy.  Put another way: when matching uv, ignore any xy because

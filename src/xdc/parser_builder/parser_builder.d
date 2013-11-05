@@ -372,7 +372,7 @@ string makeParser()
 			builder.literal('y');
 		builder.pop();
 	builder.pop();
-	return builder.toDCode("YoDawg");
+	return builder.toDCode("callMe");
 }
 
 const foo = makeParser();
@@ -394,15 +394,15 @@ void main()
 	writefln(builder.toString());
 	writefln("");
 
-	auto m = YoDawg.n0("x",0,1);
+	auto m = callMe.n0("x",0,1);
 	writefln("%s",m.successful);
-	m = YoDawg.n0("xy",0,2);
+	m = callMe.n0("xy",0,2);
 	writefln("%s",m.successful);
-	m = YoDawg.n0("xyz",0,3);
+	m = callMe.n0("xyz",0,3);
 	writefln("%s",m.successful);
-	m = YoDawg.n0("q",0,1);
+	m = callMe.n0("q",0,1);
 	writefln("%s",m.successful);
-	m = YoDawg.n0("",0,0);
+	m = callMe.n0("",0,0);
 	writefln("%s",m.successful);
 	//writefln("Now then, let's do this.\n");
 	//writeln(foo);

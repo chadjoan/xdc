@@ -65,18 +65,18 @@ template GrammarNodes(ElemType)
 			return toString(0);
 		}
 
-		protected string dCodeBody(ref string suffix, ref string[int] symbolsById) const
+		protected string dCodeBody(ref string suffix, ref string[] symbolsById) const
 		{
 			assert(0);
 		}
 
-		DCode toDCode(ref string[int] symbolsById) const
+		DCode toDCode(ref string[] symbolsById) const
 		{
 			DCode result;
 
-			int thisFuncId = symbolsById.length;
+			auto thisFuncId = symbolsById.length;
 			result.entryFuncName = "n"~std.conv.to!string(thisFuncId);
-			symbolsById[thisFuncId] = result.entryFuncName;
+			symbolsById ~= result.entryFuncName;
 
 			result.code = "";
 			string suffix = "";
@@ -99,7 +99,7 @@ template GrammarNodes(ElemType)
 
 		DCode toDCode() const
 		{
-			string[int] symbolsById;
+			string[] symbolsById = new string[0];
 			return toDCode(symbolsById);
 		}
 
@@ -167,7 +167,7 @@ template GrammarNodes(ElemType)
 			m_values ~= value;
 		}
 
-		protected override string dCodeBody(ref string suffix, ref string[int] symbolsById) const
+		protected override string dCodeBody(ref string suffix, ref string[] symbolsById) const
 		{
 			assert( values.length == 1, "Flattened literals are currently unsupported." );
 			return
@@ -208,10 +208,10 @@ template GrammarNodes(ElemType)
 			this.m_children = new Node[0];
 		}
 
-		invariant()
+		/+invariant()
 		{
 			assert( this.m_children !is null );
-		}
+		}+/
 
 		override void insertBack( Node child )
 		{
@@ -227,7 +227,7 @@ template GrammarNodes(ElemType)
 			super(OpType.sequence);
 		}
 
-		protected override string dCodeBody(ref string suffix, ref string[int] symbolsById) const
+		protected override string dCodeBody(ref string suffix, ref string[] symbolsById) const
 		{
 			assert(children.length >= 1);
 			string result = "\t\t/* Sequence */\n";
@@ -259,7 +259,7 @@ template GrammarNodes(ElemType)
 	{
 		this() { super(OpType.epsilon); }
 
-		protected override string dCodeBody(ref string suffix, ref string[int] symbolsById) const
+		protected override string dCodeBody(ref string suffix, ref string[] symbolsById) const
 		{
 			return
 				"\t\t/* Epsilon */\n"~
@@ -272,7 +272,7 @@ template GrammarNodes(ElemType)
 		this() { super(OpType.orderedChoice); }
 		this(OpType type) { super(type); }
 
-		final protected override string dCodeBody(ref string suffix, ref string[int] symbolsById) const
+		final protected override string dCodeBody(ref string suffix, ref string[] symbolsById) const
 		{
 			assert(children.length >= 1);
 			string result = "\t\t/* Ordered Choice */\n";
@@ -313,7 +313,7 @@ template GrammarNodes(ElemType)
 	{
 		this() { super(OpType.negLookAhead); }
 
-		protected override string dCodeBody(ref string suffix, ref string[int] symbolsById) const
+		protected override string dCodeBody(ref string suffix, ref string[] symbolsById) const
 		{
 			assert(children.length == 1);
 
@@ -335,7 +335,7 @@ template GrammarNodes(ElemType)
 	{
 		this() { super(OpType.posLookAhead); }
 
-		protected override string dCodeBody(ref string suffix, ref string[int] symbolsById) const
+		protected override string dCodeBody(ref string suffix, ref string[] symbolsById) const
 		{
 			assert(children.length == 1);
 
@@ -357,7 +357,7 @@ template GrammarNodes(ElemType)
 	{
 		this() { super(OpType.fullRepeat); }
 
-		protected override string dCodeBody(ref string suffix, ref string[int] symbolsById) const
+		protected override string dCodeBody(ref string suffix, ref string[] symbolsById) const
 		{
 			assert(children.length == 1);
 
