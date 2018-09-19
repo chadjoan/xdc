@@ -16,6 +16,84 @@ import pegged.grammar;
 
 import std.algorithm : splitter; // Pulled in by GrammarTester
 
+void onEnterAC( char[] match )
+{
+	writefln("Enter %s", match);
+}
+
+void onExitAC( char[] match )
+{
+	writefln("Exit %s", match);
+}
+
+
+// ('ab'|'ac') -> savedNfa1
+auto builder = new NfaBuilder!(char);
+builder.push!("or");
+	builder.push!("seq");
+		builder.operand('a');
+		builder.operand('b');
+	builder.pop();
+	builder.capture!("seq", onEnterAC, onExitAC);
+		builder.operand('a');
+		builder.operand('c');
+	builder.pop();
+builder.pop();
+
+auto savedNfa1 = builder.toNfa();
+
+// ('q'+) -> savedNfa2
+builder.initialize();
+builder.push!("seq");
+	builder.operand('q');
+	builder.push!("repeat");
+		builder.operand('q');
+	builder.pop();
+builder.pop();
+
+auto savedNfa2 = builder.toNfa();
+
+// Foo <- 'x' Bar?
+// Bar <- ('ab'|'ac')|('q'+)|(Foo)
+// (Bar) -> savedNfa3
+builder.initialize();
+builder.define!("Foo");
+	builder.push!("seq");
+		builder.operand('x');
+		builder.push!("maybe");
+			builder.call!("Bar");
+		builder.pop();
+	builder.pop();
+builder.pop();
+builder.define!("Bar");
+	builder.push!("or");
+		builder.operand(savedNfa1);
+		builder.operand(savedNfa2);
+		builder.call!("Foo");
+	builder.pop();
+builder.pop();
+builder.call!("Bar"); // This bit defines the start/end points for the grammar.
+
+auto savedNfa3 = builder.toNfa();
+
+// Advanced stuff:
+// ('ab'|'ac')&('q'+)
+builder.initialize();
+builder.push!("and");
+	builder.operand(savedNfa1);
+	builder.operand(savedNfa2);
+builder.pop();
+// This would optimize into a machine that always rejects any input, because
+//   the first symbol would have to be 'a' AND 'q' at the same time: impossible.
+
+// Back to our more useful machine.
+// It can be converted into a mash of Deterministic Finite Automata (DFAs) and
+//   Recursive Descent Parsers (RDPs).  Add memoization to the RDPs to get O(n).
+auto dfaRdp = savedNfa3.toDfaAndRdp();
+mixin(dfaRdp.toDCode());
+
+
+
 alias short PatternOpArgument;
 alias long SyntaxElement;
 
@@ -1550,44 +1628,120 @@ structural conformity definition:
     Statement  $statement
 }"
 
+
+
+
+const lowerWhileStatement = 
+{
+
+	// Apologies in advance if this isn't actually valid D code:
+	//   This is a design sketch and I currently don't have a way to compile it.
+	//
+	// The Pattern template, PatternMatch template, and PatternHandler class 
+	//   have not yet been written.  This is an example of how I might expect
+	//   them to be used.
+	//
+
+	auto consumes = "while_statement";
+	auto produces = "if_statement","goto","label");
+	
+	auto recognizer = Pattern!
+		"WhileStatement has
+		{
+			// Capture the conditional expression (call it "expr") and
+			//   capture the loop body (call it "statement").
+			.expression $expr;
+			.statement  $statement has
+			{
+				// Capture any continue/break statements.
+				any_amount_of {
+					any_amount_of .; // Same as .* in regexes.
+					one_of
+					{
+						ContinueStatement $continues;
+						BreakStatement    $breaks;
+					}
+				}
+				any_amount_of .;
+			}
+		}";
+	
+	auto action = (PatternMatch!(recognizer) m)
+	{
+		m.captures.add("uniqLoopAgain", getUniqueLabel(syntaxNode.enclosingScope))
+		m.captures.add("uniqExitLoop", getUniqueLabel(syntaxNode.enclosingScope))
+		
+		// The "recognizes" clause defines m.getCapture!"continues" with:
+		//   "ContinueStatement $continues;"
+		// That line appears in a repitition context ("any_amount_of") and is
+		//   therefore typed as an array.
+		foreach( ref node; m.getCapture!"continues" )
+			node.replaceWith( m, "GotoStatement has $uniqLoopAgain" )
+		
+		foreach( ref node; m.getCapture!"breaks" )    // Defined by the $breaks capture.
+			node.replaceWith( m, "GotoStatement has $uniqExitLoop" )
+	};
+	
+	auto synthesizer = Pattern!
+		"Label has $uniqLoopAgain
+		IfStatement has
+		{
+			OpNegate has $expr
+			GotoStatement has $uniqExitLoop
+		}
+		$statement
+		GotoStatement has $uniqLoopAgain
+		Label has $uniqExitLoop
+		";
+
+	return new PatternHandler(produces, consumes, recognizer, action, synthesizer);
+};
+
+@patternHandler(
+	consumes("while_statment"),
+	produces("if_statement","goto","label")
+)
 void lowerWhileStatement( SyntaxElement* syntaxNode )
 {
-    auto captures = syntaxNode.matchNodes(
-        "WhileStatement has
-        {
-            .expression $expr;
-            .statement  $statement has
-            any {
-                any .;
-                one_of 
-                {
-                    ContinueStatement $continues;
-                    BreakStatement    $breaks;
-                }
-            }
-        }")
-    
-    captures.add("uniqLoopAgain", getUniqueLabel(syntaxNode.enclosingScope))
-    captures.add("uniqExitLoop", getUniqueLabel(syntaxNode.enclosingScope))
-    
-    foreach( ref node; continues )
-        node.replaceWith( captures, "GotoStatement has $uniqLoopAgain" )
-    
-    foreach( ref node; breaks )
-        node.replaceWith( captures, "GotoStatement has $uniqExitLoop" )
-    
-    syntaxNode.replaceWith( captures, 
-        "Label has $uniqLoopAgain
-        IfStatement has
-        {
-            OpNegate has $expr
-            GotoStatement has $uniqExitLoop
-        }
-        $statement
-        GotoStatement has $uniqLoopAgain
-        Label has $uniqExitLoop
-        ")
-        
+	auto captures = syntaxNode.matchNodes(
+		"WhileStatement has
+		{
+			.expression $expr;
+			.statement  $statement has
+			{
+				any_amount_of {
+					any_amount_of .;
+					one_of 
+					{
+						ContinueStatement $continues;
+						BreakStatement    $breaks;
+					}
+				}
+				any_amount_of .;
+			}
+		}")
+	
+	captures.add("uniqLoopAgain", getUniqueLabel(syntaxNode.enclosingScope))
+	captures.add("uniqExitLoop", getUniqueLabel(syntaxNode.enclosingScope))
+	
+	foreach( ref node; continues )
+		node.replaceWith( captures, "GotoStatement has $uniqLoopAgain" )
+	
+	foreach( ref node; breaks )
+		node.replaceWith( captures, "GotoStatement has $uniqExitLoop" )
+	
+	syntaxNode.replaceWith( captures, 
+		"Label has $uniqLoopAgain
+		IfStatement has
+		{
+			OpNegate has $expr
+			GotoStatement has $uniqExitLoop
+		}
+		$statement
+		GotoStatement has $uniqLoopAgain
+		Label has $uniqExitLoop
+		")
+		
 }
 
             at_least(5)
@@ -1681,4 +1835,66 @@ void fun(T)(T a, T b)
 }
 
 fun(1,2); // What happen?
++/
+
+/+
+TODO:quarter finished hack example
+const lowerTemplateInstantiation = 
+{
+	// Apologies in advance if this isn't actually valid D code:
+	//   This is a design sketch and I currently don't have a way to compile it.
+	//
+	// The Pattern template, PatternMatch template, and PatternHandler class 
+	//   have not yet been written.  This is an example of how I might expect
+	//   them to be used.
+	//
+
+	auto after = "static_if";
+	auto consumes = "template_instantiation";
+	//auto produces = "if_statement","goto","label");
+	
+	auto recognizer = Pattern!
+		"TemplateInstance has
+		{
+			.name   $templateName;
+			.params $templateParams;
+			
+			AliasStatement has
+				.identifier $result == *templateName;
+			
+			DeclarationStatement has
+				.identifier $result == *templateName;
+		}";
+	
+	auto action = (PatternMatch!(recognizer) m)
+	{
+		m.captures.add("uniqLoopAgain", getUniqueLabel(syntaxNode.enclosingScope))
+		m.captures.add("uniqExitLoop", getUniqueLabel(syntaxNode.enclosingScope))
+		
+		// The "recognizes" clause defines m.getCapture!"continues" with:
+		//   "ContinueStatement $continues;"
+		// That line appears in a repitition context ("any_amount_of") and is
+		//   therefore typed as an array.
+		foreach( ref node; m.getCapture!"continues" )
+			node.replaceWith( m, "GotoStatement has $uniqLoopAgain" )
+		
+		// Ditto for m.getCapture!"breaks" and "BreakStatement $breaks;".
+		foreach( ref node; m.getCapture!"breaks" )
+			node.replaceWith( m, "GotoStatement has $uniqExitLoop" )
+	};
+	
+	auto synthesizer = Pattern!
+		"Label has $uniqLoopAgain
+		IfStatement has
+		{
+			OpNegate has $expr
+			GotoStatement has $uniqExitLoop
+		}
+		$statement
+		GotoStatement has $uniqLoopAgain
+		Label has $uniqExitLoop
+		";
+
+	return new PatternHandler(produces, consumes, recognizer, action, synthesizer);
+};
 +/

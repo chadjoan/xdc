@@ -1,0 +1,12 @@
+Goals/milestones for XDC:
+- Demoable version that converts simple D code to C(++) code.
+  - It should implement basic expressions/statements, variable declarations, function declarations, CTFE, string mixins.
+  - Support int/float types.  MAYBE pointers.  No arrays needed (yet).
+  - It must include one "WOW"ing feature, such as the ability to display the code being morphed step-by-step.
+- Kickstarter page for XDC.
+  - Features the demo.
+  - Mentions any parsing libraries released in the process of making the demo.  (Why am I capable of delivering?)
+  - Reviewed by D community and everyone likes it.
+- Kickstart funding succeeds.
+  - Need about $35000 for a year of work.  (Break it down for them; include income tax.)
+  - If I asked for $40000 and only got $37000, I would want to take the $37000.

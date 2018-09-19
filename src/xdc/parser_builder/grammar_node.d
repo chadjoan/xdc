@@ -14,6 +14,16 @@ struct DCode
 {
 	string code;
 	string entryFuncName;
+	/+
+	static DCode format(string text)
+	{
+        return DCode(text);
+	}
+	
+	this(string text)
+	{
+	}
+	+/
 }
 
 template GrammarNodes(ElemType)
