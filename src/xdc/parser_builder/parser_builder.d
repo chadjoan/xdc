@@ -1,6 +1,6 @@
 module xdc.parser_builder.parser_builder;
 
-import std.container;
+import xdc.common.slist;
 import std.stdio;
 /+
 import std.array;
@@ -56,21 +56,21 @@ PEG elements may not follow nonunitary expressions in concatenation without
 
 +/
 
-struct MatchT(ElemType)
+struct MatchT(CallersElemType)
 {
 	alias typeof(this) Match;
 
 	bool successful;
-	const(ElemType)[][] matches;
+	const(CallersElemType)[][] matches;
 
-	const(ElemType)[] input;
+	const(CallersElemType)[] input;
 	size_t begin, end;
 
-	static Match success(const ElemType[] input, size_t begin, size_t end)
+	static Match success(const CallersElemType[] input, size_t begin, size_t end)
 	{
 		Match m;
 		m.successful = true;
-		m.matches = new const(ElemType)[][1];
+		m.matches = new const(CallersElemType)[][1];
 		m.matches[0] = input[begin..end]; // TODO: have a way to be more complex.
 		m.input = input;
 		m.begin = begin;
@@ -78,7 +78,7 @@ struct MatchT(ElemType)
 		return m;
 	}
 
-	pure static Match failure(const ElemType[] input)
+	pure static Match failure(const CallersElemType[] input)
 	{
 		Match m;
 		m.successful = false;
@@ -90,15 +90,15 @@ struct MatchT(ElemType)
 	}
 }
 
-final class ParserBuilder(ElemType)
+final class ParserBuilder(CallersElemType)
 {
-	mixin GrammarNodes!ElemType;
+	mixin GrammarNodes!CallersElemType;
 	/+
-	private alias Transition!ElemType        Transition;
-	private alias AutomatonFragment!ElemType Fragment;
-	private alias AutomatonState!ElemType    State;
+	private alias Transition!CallersElemType        Transition;
+	private alias AutomatonFragment!CallersElemType Fragment;
+	private alias AutomatonState!CallersElemType    State;
 	+/
-	//private alias GrammarNode!ElemType       Node;
+	//private alias GrammarNode!CallersElemType       Node;
 
 	bool delayNecessaryLowerings = false;
 
@@ -139,7 +139,7 @@ final class ParserBuilder(ElemType)
 	/** Alternation: Equivalent to the regex operation (a|b). */
 	void pushUnorderedChoice()  { /+pushOp!(OpType.unorderedChoice);+/
 		pushOp!(OpType.orderedChoice);
-		writeln("%s, %s: Stub!", __FILE__, __LINE__);
+		writefln("%s, %s: Stub!", __FILE__, __LINE__);
 	}
 
 	/**
@@ -256,7 +256,7 @@ assert(!p2.parse("b"));
 		parent.insertBack(temp);
 	}
 
-	void literal( ElemType elem )
+	void literal( CallersElemType elem )
 	{
 		parent.insertBack(new GrammarLeaf(elem));
 	}
@@ -297,7 +297,7 @@ assert(!p2.parse("b"));
 
 		assert( b1.type == OpType.sequence );
 		assert( b2.type == OpType.sequence );
-		assert( b3.type == OpType.unorderedChoice );
+		//assert( b3.type == OpType.unorderedChoice ); // TODO
 		assert( b4.type == OpType.literal );
 		assert( b5.type == OpType.literal );
 
@@ -352,7 +352,7 @@ assert(!p2.parse("b"));
 		string result =
 			"struct "~name~"\n"~
 			"{\n"~
-			"\talias MatchT!"~ElemType.stringof~" Match;\n"~
+			"\talias MatchT!"~CallersElemType.stringof~" Match;\n"~
 			"\n"~
 			guts.code~
 			"}\n";
@@ -407,5 +407,4 @@ void main()
 	//writefln("Now then, let's do this.\n");
 	//writeln(foo);
 }
-
 

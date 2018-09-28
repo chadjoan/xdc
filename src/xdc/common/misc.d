@@ -22,5 +22,5 @@ string boolToStr(bool val)
 
 void stubAlert(string file = __FILE__, int line = __LINE__)
 {
-	debug __ctfeWriteln(file~", "~itoa(line)~": stub");
+	debug __ctfeWrite(file~", "~itoa(line)~": stub\n");
 }
