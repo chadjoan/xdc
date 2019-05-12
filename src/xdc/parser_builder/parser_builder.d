@@ -340,24 +340,39 @@ assert(!p2.parse("b"));
 	{
 		return root.toString();
 	}
-
+	
 	string toDCode(string name)
 	{
+		return toDCode(0, name);
+	}
+
+	string toDCode(size_t indentLevel, string name)
+	{
+		import xdc.common.reindent;
 		assert(name != null);
 
 		// TODO: eliminateNullaryExpressions(root);
 
-		auto guts = root.toDCode();
+		auto guts = root.toDCode(indentLevel+1);
+		
 
-		string result =
-			"struct "~name~"\n"~
-			"{\n"~
-			"\talias MatchT!"~CallersElemType.stringof~" Match;\n"~
-			"\n"~
-			guts.code~
-			"}\n";
+		/+return DCode(indentLevel, `
+			struct `~name~`
+			{
+				alias MatchT!(`~CallersElemType.stringof~`) Match;
 
-		return result;
+				`~guts.code~`
+			}
+		`).code;+/
+
+		return DCode(indentLevel, reindent(indentLevel, `
+			struct `~name~`
+			{
+				alias MatchT!(`~CallersElemType.stringof~`) Match;
+
+				`~guts.code~`
+			}
+		`)).code;
 	}
 
 }
@@ -374,6 +389,20 @@ string makeParser()
 	builder.pop();
 	return builder.toDCode("callMe");
 }
+
+/+
+void main()
+{
+	import std.stdio;
+		import xdc.common.reindent;
+	auto foo = makeParser();
+	writeln("Before reindentation:");
+	writeln(foo);
+	writeln("");
+	writeln("After reindentation:");
+	writeln(reindent(0, foo));
+}
++/
 
 const foo = makeParser();
 
@@ -407,4 +436,3 @@ void main()
 	//writefln("Now then, let's do this.\n");
 	//writeln(foo);
 }
-
