@@ -30,7 +30,15 @@ template GrammarNodes(CallersElemType)
 	{
 		const OpType type;
 
-		pure @property bool hasChildren() const            { return false; }
+		final pure @property size_t arity() const
+		{
+			if ( !this.canHaveChildren )
+				return 0;
+			else
+				return children.length;
+		}
+
+		pure @property bool canHaveChildren() const            { return false; }
 		pure @property const(ChildList) children() const   { assert(0); }
 		@property ChildList children( ChildList newb )     { assert(0); }
 
@@ -64,7 +72,7 @@ template GrammarNodes(CallersElemType)
 			if ( this.hasValues )
 				result ~= " " ~ std.conv.to!string(this.values);
 
-			if ( this.hasChildren )
+			if ( this.canHaveChildren )
 				foreach( child; this.children )
 					result ~= "\n" ~ child.toString(depth+1);
 
@@ -130,7 +138,7 @@ template GrammarNodes(CallersElemType)
 				result.values = newValues;
 			}
 
-			if ( this.hasChildren && !this.children.empty )
+			if ( this.canHaveChildren && !this.children.empty )
 			{
 				auto newChildren = new Node[this.children.length];
 				foreach( i, child; this.children )
@@ -206,7 +214,7 @@ template GrammarNodes(CallersElemType)
 	{
 		private ChildList m_children;
 
-		pure override @property bool hasChildren() const
+		pure override @property bool canHaveChildren() const
 		{
 			return true;
 		}

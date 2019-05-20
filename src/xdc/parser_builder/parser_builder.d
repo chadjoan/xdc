@@ -93,6 +93,22 @@ struct MatchT(CallersElemType)
 final class ParserBuilder(CallersElemType)
 {
 	mixin GrammarNodes!CallersElemType;
+
+	import std.array : Appender, appender;
+	import std.exception : enforce;
+
+	final class Scope
+	{
+		GrammarParent      parent;
+		Appender!(Node[])  children;
+
+		this(GrammarParent parent)
+		{
+			this.parent   = parent;
+			this.children = appender!(Node[])();
+		}
+	}
+
 	/+
 	private alias Transition!CallersElemType        Transition;
 	private alias AutomatonFragment!CallersElemType Fragment;
@@ -104,9 +120,18 @@ final class ParserBuilder(CallersElemType)
 
 	//private SList!OpType operatorStack;
 	//private SList!SList!Node operandStack;
-	private SList!(Node) parents;
-	private Node parent = null;
-	private Node root = null;
+
+	// The first node inserted into this SList is the root node.
+	// The most recently inserted node will represent the currently enclosing
+	// scope.
+	private SList!(Scope)  scopeStack;
+
+	// Most recently encountered ops/nodes are placed towards the front of the
+	// scope list.
+	//private SList!(Node)           nodesInCurrentScope;
+
+	//private GrammarParent parent = null;
+	private GrammarParent root = null;
 
 	this()
 	{
@@ -115,30 +140,231 @@ final class ParserBuilder(CallersElemType)
 
 	void initialize()
 	{
-		//parents = make!(SList!(Node))(cast(Node[])[]);
-		parents = SList!Node();
-
-		// TODO: Maybe this should be OpType.define with a name of "opCall"
-		root = new Sequence;
-		parent = root;
+		//nodesInCurrentScope = make!(SList!(Node))(cast(Node[])[]);
+		scopeStack = SList!Scope();
+		//nodesInCurrentScope = SList!Node();
 	}
 
-	private @property void pushOp(OpType op)()
+	/// Called at the start of the parser's grammar definition.
+	/// In other words, this must be called before any grammar definition
+	/// methods like pushSequence, pushOrderedChoice, literal, and so on.
+	void beginGrammarDefinition()
+	{
+		// TODO: Maybe this should be OpType.define with a name of "opCall"
+		root = new Sequence;
+		scopeStack.insertFront(new Scope(root));
+		invalidateSemanticAnalysis();
+	}
+
+	/// Called at the end of the parser's grammar definition.
+	/// This leaves the parser builder in a state where it is prepared to
+	/// generate code that will parse the previously given grammar definition.
+	/// This must be called after calling beginGrammarDefinition, and would
+	/// naturally follow grammar definition methods like pushOrderedChoice,
+	/// literal, pop, and so on.
+	/// This must be called before calling any methods that perform semantic
+	/// analysis of the grammar or do any parser generation, such as
+	/// semanticAnalysis or toDCode.
+	void endGrammarDefinition()
+	{
+		assert(!scopeStack.empty);
+		// Can't call 'pop' because it will error that there was no
+		// corresponding 'push' call: in this case, there wasn't, and that
+		// is OK; there is only one root node.
+		uncheckedPop();
+		assert(scopeStack.empty);
+	}
+
+	/// Performs any lowerings or optimizations of the grammar before any
+	/// machine generation or code generation is performed.
+	/// This must be called after endGrammarDefinition.
+	/// This method is idempotent and will only perform any actions once for
+	/// the most recent call to endGrammarDefinition.
+	/// In most situations, the caller/owner of the ParserBuilder object will
+	/// not need to call this method. This method will automatically be called
+	/// when the first code generating function is called, assuming it has
+	/// not been called already by the caller/owner of the ParserBuilder object.
+	/// The only reason this exists separate from the code generation methods
+	/// as a part of the public API is to allow callers to control when
+	/// semantic analysis calculations are performed.
+	private bool semanticAnalysisAlreadyPerformed = false;
+	void semanticAnalysis()
+	{
+		enforce(root !is null, "Must define a grammar before calling 'semanticAnalysis', see 'beginGrammarDefinition' and 'endGrammarDefinition'.");
+		enforce(scopeStack.empty, "ParserBuilder method 'endGrammarDefinition' must be called before calling 'semanticAnalysis'.");
+		if ( semanticAnalysisAlreadyPerformed )
+			return;
+		scope(success)
+			semanticAnalysisAlreadyPerformed = true;
+		// TODO
+	}
+
+	/// Indicates to the ParserBuilder that semantic analysis must be performed
+	/// before the next code generation request. This is unlikely to ever be
+	/// needed externally, but might be helpful for workarounds.
+	void invalidateSemanticAnalysis()
+	{
+		semanticAnalysisAlreadyPerformed = false;
+	}
+
+	private void checkInsideGrammarDef(string funcName = __FUNCTION__)()
+	{
+		enforce(!scopeStack.empty, "'beginGrammarDefinition' must be called before using grammar defining methods like '"~funcName~"'.");
+	}
+
+	private @property auto pushOp(OpType op)()
 	{
 		static assert(op != OpType.literal);
-		parents.insertFront(parent);
-		parent = mixin(`new `~toClassName(op));
+
+		checkInsideGrammarDef();
+		//nodesInCurrentScope.insertFront(parent);
+
+		auto newNode = mixin(`new `~toClassName(op));
+		auto newScope = new Scope(newNode);
+
+		auto enclosingScope = scopeStack.front;
+		enclosingScope.children.put(newNode);
+
+		scopeStack.insertFront(newScope);
+
+		return newNode;
+	}
+
+	unittest
+	{
+		// Test for nesting to work well.
+		auto pb0 = new ParserBuilder!char();
+		pb0.beginGrammarDefinition();
+		pb0.literal('0');
+		pb0.endGrammarDefinition();
+
+		assert(pb0.root !is null);
+		assert(pb0.root.canHaveChildren);
+		assert(pb0.root.children.length == 1);
+		assert(pb0.root.children[0].hasValues);
+		assert(pb0.root.children[0].values == "0");
+
+		auto pb1 = new ParserBuilder!char();
+		pb1.beginGrammarDefinition();
+		pb1.literal('0');
+		pb1.pushSequence();
+			pb1.literal('A');
+			pb1.literal('B');
+		pb1.pop();
+		pb1.literal('1');
+		pb1.endGrammarDefinition();
+
+		assert(pb1.root !is null);
+		assert(pb1.root.canHaveChildren);
+		assert(pb1.root.children.length == 3);
+		assert(pb1.root.children[0].hasValues);
+		assert(pb1.root.children[0].values == "0");
+		assert(pb1.root.children[1].canHaveChildren);
+		assert(pb1.root.children[1].children.length == 2);
+		assert(pb1.root.children[1].children[0].hasValues);
+		assert(pb1.root.children[1].children[0].values == "A");
+		assert(pb1.root.children[1].children[1].hasValues);
+		assert(pb1.root.children[1].children[1].values == "B");
+		assert(pb1.root.children[2].hasValues);
+		assert(pb1.root.children[2].values == "1");
+
+		auto pb2 = new ParserBuilder!char();
+		pb2.beginGrammarDefinition();
+		pb2.literal('0');
+		pb2.pushSequence();
+			pb2.literal('A');
+			pb2.pushSequence();
+				pb2.literal('x');
+				pb2.literal('y');
+			pb2.pop();
+			pb2.literal('B');
+		pb2.pop();
+		pb2.literal('1');
+		pb2.endGrammarDefinition();
+
+		assert(pb2.root !is null);
+		assert(pb2.root.canHaveChildren);
+		assert(pb2.root.children.length == 3);
+		assert(pb2.root.children[0].hasValues);
+		assert(pb2.root.children[0].values == "0");
+		assert(pb2.root.children[1].canHaveChildren);
+		assert(pb2.root.children[1].children.length == 3);
+		assert(pb2.root.children[1].children[0].hasValues);
+		assert(pb2.root.children[1].children[0].values == "A");
+		assert(pb2.root.children[1].children[1].canHaveChildren);
+		assert(pb2.root.children[1].children[1].children.length == 2);
+		assert(pb2.root.children[1].children[1].children[0].hasValues);
+		assert(pb2.root.children[1].children[1].children[0].values == "x");
+		assert(pb2.root.children[1].children[1].children[1].hasValues);
+		assert(pb2.root.children[1].children[1].children[1].values == "y");
+		assert(pb2.root.children[1].children[2].hasValues);
+		assert(pb2.root.children[1].children[2].values == "B");
+		assert(pb2.root.children[2].hasValues);
+		assert(pb2.root.children[2].values == "1");
+
+		auto pb3 = new ParserBuilder!char();
+		pb3.beginGrammarDefinition();
+		pb3.literal('0');
+		pb3.pushSequence();
+			pb3.literal('A');
+			pb3.pushSequence();
+				pb3.literal('x');
+				pb3.pushSequence();
+					pb3.literal('X');
+					pb3.literal('Y');
+				pb3.pop();
+				pb3.literal('y');
+			pb3.pop();
+			pb3.literal('B');
+		pb3.pop();
+		pb3.literal('1');
+		pb3.endGrammarDefinition();
+
+		assert(pb3.root !is null);
+		assert(pb3.root.canHaveChildren);
+		assert(pb3.root.children.length == 3);
+		assert(pb3.root.children[0].hasValues);
+		assert(pb3.root.children[0].values == "0");
+		assert(pb3.root.children[1].canHaveChildren);
+		assert(pb3.root.children[1].children.length == 3);
+		assert(pb3.root.children[1].children[0].hasValues);
+		assert(pb3.root.children[1].children[0].values == "A");
+		assert(pb3.root.children[1].children[1].canHaveChildren);
+		assert(pb3.root.children[1].children[1].children.length == 3);
+		assert(pb3.root.children[1].children[1].children[0].hasValues);
+		assert(pb3.root.children[1].children[1].children[0].values == "x");
+		assert(pb3.root.children[1].children[1].children[1].canHaveChildren);
+		assert(pb3.root.children[1].children[1].children[1].children.length == 2);
+		assert(pb3.root.children[1].children[1].children[1].children[0].hasValues);
+		assert(pb3.root.children[1].children[1].children[1].children[0].values == "X");
+		assert(pb3.root.children[1].children[1].children[1].children[1].hasValues);
+		assert(pb3.root.children[1].children[1].children[1].children[1].values == "Y");
+		assert(pb3.root.children[1].children[1].children[2].hasValues);
+		assert(pb3.root.children[1].children[1].children[2].values == "y");
+		assert(pb3.root.children[1].children[2].hasValues);
+		assert(pb3.root.children[1].children[2].values == "B");
+		assert(pb3.root.children[2].hasValues);
+		assert(pb3.root.children[2].values == "1");
 	}
 
 	/** Sequencing: Equivalent to the regex operation (ab). */
-	void pushSequence()         { pushOp!(OpType.sequence); }
+	Sequence         pushSequence()
+	{
+		checkInsideGrammarDef!"ParserBuilder.pushSequence";
+		return pushOp!(OpType.sequence);
+	}
 
 	/** Alternation: Equivalent to the PEG operation (a/b). */
-	void pushOrderedChoice()    { pushOp!(OpType.orderedChoice); }
+	OrderedChoice    pushOrderedChoice()
+	{
+		checkInsideGrammarDef!"ParserBuilder.pushOrderedChoice";
+		return pushOp!(OpType.orderedChoice);
+	}
 
 	/** Alternation: Equivalent to the regex operation (a|b). */
-	void pushUnorderedChoice()  { /+pushOp!(OpType.unorderedChoice);+/
-		pushOp!(OpType.orderedChoice);
+	/*un*/ OrderedChoice  pushUnorderedChoice()  { /+return pushOp!(OpType.unorderedChoice);+/
+		checkInsideGrammarDef!"ParserBuilder.pushUnorderedChoice";
+		return pushOp!(OpType.orderedChoice);
 		writefln("%s, %s: Stub!", __FILE__, __LINE__);
 	}
 
@@ -185,7 +411,11 @@ assert(!p2.parse("b"));
 	Since this is a unary operation, if more than one operand is given, then the
 	operands are placed in a sequence that will then be operated on.
 	*/
-	void pushMaybe() { pushOp!(OpType.maybe); }
+	Maybe pushMaybe()
+	{
+		checkInsideGrammarDef!"ParserBuilder.pushMaybe";
+		return pushOp!(OpType.maybe);
+	}
 
 	/**
 	Negates its operand.
@@ -226,10 +456,23 @@ assert(!p2.parse("b"));
 	Since this is a unary operation, if more than one operand is given, then the
 	operands are placed in a sequence that will then be operated on.
 	*/
-	void pushFullRepeat() { pushOp!(OpType.fullRepeat); }
+	FullRepeat pushFullRepeat()
+	{
+		checkInsideGrammarDef!"ParserBuilder.pushFullRepeat";
+		return pushOp!(OpType.fullRepeat);
+	}
 
 	/** Terminates a list of operands for an operator given by pushOpName(). */
 	void pop()
+	{
+		//auto temp = parent;
+		if ( scopeStack.empty )
+			throw new Exception("Attempt to 'pop' with no corresponding 'push___'.");
+
+		uncheckedPop();
+	}
+
+	private void uncheckedPop()
 	{
 		// TODO:
 		// Lower
@@ -246,38 +489,55 @@ assert(!p2.parse("b"));
 		//   pb.pop();
 		//
 
-		auto temp = parent;
+		auto completedScope = scopeStack.front();
+		completedScope.parent.children = completedScope.children.data;
+		
+		scopeStack.removeFront();
 
-		parent = parents.removeAny();
+		//parent = nodesInCurrentScope.removeFront();
 
-		if ( !delayNecessaryLowerings )
-			temp = necessaryLowerings(temp);
+		//if ( !delayNecessaryLowerings )
+		//	temp = necessaryLowerings(temp);
 
-		parent.insertBack(temp);
+		//parent.insertBack(temp);
+	}
+
+	void putNode( Node n )
+	{
+		enforce( !scopeStack.empty, "The 'begin' method (on a ParserBuilder object) must be called before 'putNode' is called." );
+		scopeStack.front;
 	}
 
 	void literal( CallersElemType elem )
 	{
-		parent.insertBack(new GrammarLeaf(elem));
+		assert(!scopeStack.empty);
+		auto currentScope = this.scopeStack.front();
+		currentScope.children.put(new GrammarLeaf(elem));
 	}
 
 	void compose( const ParserBuilder pb )
 	{
+		checkInsideGrammarDef!"ParserBuilder.compose";
 		if ( pb is this )
 			throw new Exception("Adding a parser to itself is not supported."
 				~"  This probably wouldn't do what's expected anyways.");
-		parent.insertBack(pb.root.deepCopy());
+		assert(!scopeStack.empty);
+		assert(pb.scopeStack.empty);
+		auto currentScope = this.scopeStack.front();
+		currentScope.children.put(pb.root.deepCopy());
 	}
 
 	unittest
 	{
 		auto pba = new ParserBuilder!char();
+		pba.beginGrammarDefinition();
 		pba.pushSequence();
 			pba.pushUnorderedChoice();
 				pba.literal('x');
 				pba.literal('y');
 			pba.pop();
 		pba.pop();
+		pba.endGrammarDefinition();
 
 		Node a1 = pba.root; // Implicit sequence
 		auto a2 = a1.children[0]; // pushOpSequence
@@ -286,7 +546,9 @@ assert(!p2.parse("b"));
 		auto a5 = a3.children[1]; // y
 
 		auto pbb = new ParserBuilder!char();
+		pbb.beginGrammarDefinition();
 		pbb.compose(pba);
+		pbb.endGrammarDefinition();
 
 		// pbb.root is it's own implicit opSequence.
 		auto b1 = pbb.root.children[0]; // pba's former implicit opSequence (copy of).
@@ -351,6 +613,11 @@ assert(!p2.parse("b"));
 		import xdc.common.reindent;
 		assert(name != null);
 
+		enforce(root !is null, "Must define a grammar before calling 'toDCode', see 'beginGrammarDefinition' and 'endGrammarDefinition'.");
+		enforce(scopeStack.empty, "ParserBuilder method 'endGrammarDefinition' must be called before calling 'toDCode'.");
+	
+		invalidateSemanticAnalysis();
+
 		// TODO: eliminateNullaryExpressions(root);
 
 		auto guts = root.toDCode(indentLevel+1);
@@ -381,12 +648,14 @@ assert(!p2.parse("b"));
 string makeParser()
 {
 	auto builder = new ParserBuilder!char;
-	builder.pushSequence();
-		builder.literal('x');
-		builder.pushMaybe();
-			builder.literal('y');
+	builder.beginGrammarDefinition();
+		builder.pushSequence();
+			builder.literal('x');
+			builder.pushMaybe();
+				builder.literal('y');
+			builder.pop();
 		builder.pop();
-	builder.pop();
+	builder.endGrammarDefinition();
 	return builder.toDCode("callMe");
 }
 
@@ -414,12 +683,14 @@ mixin(foo);
 void main()
 {
 	auto builder = new ParserBuilder!char;
-	builder.pushSequence();
-		builder.literal('x');
-		builder.pushMaybe();
-			builder.literal('y');
+	builder.beginGrammarDefinition();
+		builder.pushSequence();
+			builder.literal('x');
+			builder.pushMaybe();
+				builder.literal('y');
+			builder.pop();
 		builder.pop();
-	builder.pop();
+	builder.endGrammarDefinition();
 	writefln(builder.toString());
 	writefln("");
 
