@@ -118,6 +118,8 @@ final class ParserBuilder(CallersElemType)
 
 	bool delayNecessaryLowerings = false;
 
+	private bool inGrammarDefinition = false;
+
 	//private SList!OpType operatorStack;
 	//private SList!SList!Node operandStack;
 
@@ -150,10 +152,13 @@ final class ParserBuilder(CallersElemType)
 	/// methods like pushSequence, pushOrderedChoice, literal, and so on.
 	void beginGrammarDefinition()
 	{
+		assert(!inGrammarDefinition);
+		assert(scopeStack.empty);
 		// TODO: Maybe this should be OpType.define with a name of "opCall"
 		root = new Sequence;
 		scopeStack.insertFront(new Scope(root));
 		invalidateSemanticAnalysis();
+		inGrammarDefinition = true;
 	}
 
 	/// Called at the end of the parser's grammar definition.
@@ -167,7 +172,10 @@ final class ParserBuilder(CallersElemType)
 	/// semanticAnalysis or toDCode.
 	void endGrammarDefinition()
 	{
+		assert(inGrammarDefinition);
 		assert(!scopeStack.empty);
+		inGrammarDefinition = false;
+
 		// Can't call 'pop' because it will error that there was no
 		// corresponding 'push' call: in this case, there wasn't, and that
 		// is OK; there is only one root node.
@@ -191,7 +199,9 @@ final class ParserBuilder(CallersElemType)
 	void semanticAnalysis()
 	{
 		enforce(root !is null, "Must define a grammar before calling 'semanticAnalysis', see 'beginGrammarDefinition' and 'endGrammarDefinition'.");
-		enforce(scopeStack.empty, "ParserBuilder method 'endGrammarDefinition' must be called before calling 'semanticAnalysis'.");
+		enforce(!inGrammarDefinition, "Cannot run semantic analysis from within grammar definition: "~
+			"ParserBuilder method 'endGrammarDefinition' must be called before calling 'semanticAnalysis'.");
+		assert(scopeStack.empty);
 		if ( semanticAnalysisAlreadyPerformed )
 			return;
 		scope(success)
@@ -209,7 +219,8 @@ final class ParserBuilder(CallersElemType)
 
 	private void checkInsideGrammarDef(string funcName = __FUNCTION__)()
 	{
-		enforce(!scopeStack.empty, "'beginGrammarDefinition' must be called before using grammar defining methods like '"~funcName~"'.");
+		enforce(inGrammarDefinition, "'beginGrammarDefinition' must be called before using grammar defining methods like '"~funcName~"'.");
+		assert(!scopeStack.empty);
 	}
 
 	private @property auto pushOp(OpType op)()
